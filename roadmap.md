@@ -19,3 +19,8 @@
 - [x] Wallets & statements update cleanly on every payment
 - [x] STK push narration per payment type; fund drive recorded as donation, donation email confirmation
 - [x] Member dashboard redesign: simple grouped menu, overview, quick actions (keep existing design)
+- [x] Defaulters: contributions + penalties, suspend/activate/warning/reminder (Laravel DefaulterController)
+- [x] Minute templates (Laravel MinuteTemplateController + form picker / save as template)
+- [x] Admin "View as member" full takeover (X-View-As-Member header, member routes honour it)
+- [x] Chat: private 1-to-1 chats plus group chats
+- [ ] Run new Laravel migration on hosting (php artisan migrate) — needs server access

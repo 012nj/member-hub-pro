@@ -17,3 +17,4 @@
 - Store the morning screen's last displayed Nairobi calendar day only in device storage; this is a presentation preference, not business data.
 - Dashboard presentation consumes existing API response fields only; never estimate financial totals, growth or account details from unrelated values because live records must remain trustworthy.
 - Member payment destinations are shared in a browser-safe module; the welfare page reuses the existing monthly contribution payment contract while penalties and fund drives retain their existing selection pages.
+- Admin "view as member" is a frontend session overlay (effective user role=member) plus the X-View-As-Member header; Laravel member routes resolve the member via PortalController::memberId, so the admin sees exactly the member's data.
