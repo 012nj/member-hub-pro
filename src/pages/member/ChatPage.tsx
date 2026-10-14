@@ -15,7 +15,7 @@ import { getDemoMode } from '@/api/client';
 import {
   fetchUserConversations, fetchMessages, fetchParticipants,
   sendMessage, deleteMessage, markConversationRead,
-  setTyping, toggleReaction, createGroupConversation,
+  setTyping, toggleReaction, createGroupConversation, createDirectConversation,
   subscribeToMessages, subscribeToReactions, subscribeToTyping,
   subscribeToConversations, chatSupabase,
 } from '@/api/group-chat';
@@ -224,6 +224,23 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
     }, 3000);
   }, [user, activeConv, isDemo]);
 
+  const handleCreateDirect = useCallback(async (otherId: string) => {
+    if (!user) return;
+    const other = demoChatData?.allMembers.find((x) => x.id === otherId);
+    try {
+      const conv = isDemo && demoData
+        ? demoData.createDirect(user.id, user.name, otherId)
+        : await createDirectConversation({ id: user.id, name: user.name }, { id: otherId, name: other?.name || otherId, avatar: other?.avatar });
+      setConversations((prev) => [conv, ...prev.filter((c) => c.id !== conv.id)]);
+      setShowNewGroup(false);
+      setActiveConv?.(conv as any);
+      loadMessages(conv.id);
+      if (!isDemo) loadConversations();
+    } catch {
+      /* ignore */
+    }
+  }, [user, isDemo, demoData]);
+
   const handleCreateGroup = useCallback(async (name: string, memberIds: string[]) => {
     if (!user) return;
     if (isDemo && demoData) {
@@ -392,8 +409,8 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
               <Button
                 onClick={() => setShowNewGroup(true)}
                 className="w-10 h-10 p-0 flex-shrink-0"
-                aria-label="New group chat"
-                title="New group chat"
+                aria-label="New chat"
+                title="New chat"
               >
                 <Plus size={18} />
               </Button>
@@ -413,7 +430,7 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
                   onClick={() => setShowNewGroup(true)}
                   className="mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium"
                 >
-                  Start a group chat
+                  Start a private or group chat
                 </button>
               </div>
             ) : (
@@ -444,14 +461,14 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
                 </button>
                 <Avatar
                   id={activeConv.participants?.find((p) => p.user_id !== user.id)?.user_id || activeConv.created_by}
-                  name={activeConv.name || 'Chat'}
+                  name={convTitle(activeConv, user.id)}
                   url={activeConv.participants?.find((p) => p.user_id !== user.id)?.user_avatar}
                   size="w-10 h-10"
                   fallbackIcon={activeConv.type === 'group' ? <Users size={18} /> : undefined}
                 />
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-neutral-900 truncate">
-                    {activeConv.name || 'Direct message'}
+                    {convTitle(activeConv, user.id)}
                   </p>
                   <p className="text-xs text-neutral-500 truncate">
                     {typingUsers.length > 0 ? (
@@ -641,6 +658,7 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
           currentUserName={user.name}
           allMembers={demoChatData?.allMembers || []}
           onCreate={handleCreateGroup}
+          onCreateDirect={handleCreateDirect}
           onClose={() => setShowNewGroup(false)}
         />
       )}
@@ -712,7 +730,7 @@ function ConversationListItem({ conv, active, currentUserId, onClick }: Conversa
     >
       <Avatar
         id={previewParticipant?.user_id || conv.created_by}
-        name={conv.name || 'DM'}
+        name={convTitle(conv, currentUserIdForTitle)}
         url={previewParticipant?.user_avatar}
         size="w-11 h-11"
         fallbackClass={avatarClass}
@@ -724,7 +742,7 @@ function ConversationListItem({ conv, active, currentUserId, onClick }: Conversa
             'text-sm truncate',
             active ? 'font-semibold text-neutral-900' : 'font-medium text-neutral-800',
           )}>
-            {conv.name || 'Direct message'}
+            {convTitle(conv, currentUserIdForTitle)}
           </p>
           {lastMsg && (
             <span className="text-2xs text-neutral-400 flex-shrink-0">
@@ -924,10 +942,12 @@ interface NewGroupModalProps {
   currentUserName: string;
   allMembers: Array<{ id: string; name: string; avatar?: string }>;
   onCreate: (name: string, memberIds: string[]) => void;
+  onCreateDirect: (memberId: string) => void;
   onClose: () => void;
 }
 
-function NewGroupModal({ currentUserId, allMembers, onCreate, onClose }: NewGroupModalProps) {
+function NewGroupModal({ currentUserId, allMembers, onCreate, onCreateDirect, onClose }: NewGroupModalProps) {
+  const [mode, setMode] = useState<'private' | 'group'>('private');
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
@@ -938,6 +958,7 @@ function NewGroupModal({ currentUserId, allMembers, onCreate, onClose }: NewGrou
   );
 
   const toggle = (id: string) => {
+    if (mode === 'private') { onCreateDirect(id); return; }
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -953,7 +974,7 @@ function NewGroupModal({ currentUserId, allMembers, onCreate, onClose }: NewGrou
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
           <div className="flex items-center gap-2">
             <Users size={20} className="text-primary-600" />
-            <h2 className="text-base font-bold text-neutral-900">New Group Chat</h2>
+            <h2 className="text-base font-bold text-neutral-900">New Chat</h2>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-neutral-100">
             <X size={18} className="text-neutral-500" />
@@ -961,6 +982,18 @@ function NewGroupModal({ currentUserId, allMembers, onCreate, onClose }: NewGrou
         </div>
 
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-neutral-100 p-1">
+            {(['private', 'group'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={classNames('rounded-lg py-2 text-sm font-medium', mode === m ? 'bg-white shadow text-neutral-900' : 'text-neutral-500')}
+              >
+                {m === 'private' ? 'Private chat' : 'Group chat'}
+              </button>
+            ))}
+          </div>
+          {mode === 'group' && (
           <div>
             <label className="label">Group Name</label>
             <input
@@ -972,9 +1005,10 @@ function NewGroupModal({ currentUserId, allMembers, onCreate, onClose }: NewGrou
               autoFocus
             />
           </div>
+          )}
 
           <div>
-            <label className="label">Add Members ({selected.size} selected)</label>
+            <label className="label">{mode === 'private' ? 'Choose a member to chat with' : `Add Members (${selected.size} selected)`}</label>
             <div className="relative mb-2">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
               <input
@@ -1015,14 +1049,22 @@ function NewGroupModal({ currentUserId, allMembers, onCreate, onClose }: NewGrou
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-100">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button
+          {mode === 'group' && <Button
             onClick={() => onCreate(name.trim(), Array.from(selected))}
             disabled={!name.trim() || selected.size === 0}
           >
             Create Group
-          </Button>
+          </Button>}
         </div>
       </div>
     </div>
   );
+}
+
+function convTitle(conv: { name?: string | null; type?: string; participants?: Array<{ user_id: string; user_name: string }> }, meId?: string): string {
+  if (conv.type === 'direct' || !conv.name) {
+    const other = conv.participants?.find((p) => p.user_id !== meId);
+    return other?.user_name || conv.name || 'Direct message';
+  }
+  return conv.name;
 }

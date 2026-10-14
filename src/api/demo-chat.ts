@@ -312,4 +312,26 @@ export const demoChatData = {
     demoConversations.unshift(newConv);
     return { ...newConv, _messages: undefined, _readBy: undefined, _typing: undefined } as GroupConversation;
   },
+
+  createDirect(meId: string, meName: string, otherId: string): GroupConversation {
+    initConversations();
+    const existing = demoConversations.find(
+      (c) => c.type === 'direct' && c.participants.some((p) => p.user_id === otherId) && c.participants.some((p) => p.user_id === meId),
+    );
+    if (existing) return { ...existing, _messages: undefined, _readBy: undefined, _typing: undefined } as GroupConversation;
+    const other = demoChatMembers.find((x) => x.id === otherId);
+    const convId = `dm-${Date.now()}`;
+    const now = new Date().toISOString();
+    const participants: GroupParticipant[] = [
+      { id: `p-${Date.now()}-0`, conversation_id: convId, user_id: meId, user_name: meName, user_avatar: null, role: 'member', last_read_at: now, joined_at: now },
+      { id: `p-${Date.now()}-1`, conversation_id: convId, user_id: otherId, user_name: other?.name || otherId, user_avatar: null, role: 'member', last_read_at: null, joined_at: now },
+    ];
+    const newConv: DemoConversation = {
+      id: convId, name: null, type: 'direct', avatar_url: null, created_by: meId,
+      created_at: now, updated_at: now, participants, last_message: null, unread_count: 0,
+      _messages: [], _readBy: new Set([meId]), _typing: [],
+    } as unknown as DemoConversation;
+    demoConversations.unshift(newConv);
+    return { ...newConv, _messages: undefined, _readBy: undefined, _typing: undefined } as GroupConversation;
+  },
 };

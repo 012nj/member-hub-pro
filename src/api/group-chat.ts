@@ -273,6 +273,33 @@ export async function createGroupConversation(
   return { ...conv, participants: [], last_message: null, unread_count: 0 };
 }
 
+/** Private 1-to-1 chat. Reuses an existing direct conversation between the two members. */
+export async function createDirectConversation(
+  me: { id: string; name: string },
+  other: { id: string; name: string; avatar?: string },
+): Promise<GroupConversation> {
+  const existing = await fetchUserConversations(me.id);
+  const found = existing.find(
+    (c) => c.type === 'direct' && c.participants?.some((p) => p.user_id === other.id),
+  );
+  if (found) return found;
+
+  const { data: conv, error } = await supabase
+    .from('chat_conversations')
+    .insert({ name: null, type: 'direct', created_by: me.id })
+    .select('*')
+    .single();
+  if (error) throw error;
+
+  const { error: partError } = await supabase.from('chat_participants').insert([
+    { conversation_id: conv.id, user_id: me.id, user_name: me.name, user_avatar: null, role: 'member' },
+    { conversation_id: conv.id, user_id: other.id, user_name: other.name, user_avatar: other.avatar || null, role: 'member' },
+  ]);
+  if (partError) throw partError;
+
+  return { ...conv, participants: [], last_message: null, unread_count: 0 };
+}
+
 export async function addParticipant(
   conversationId: string,
   userId: string,
