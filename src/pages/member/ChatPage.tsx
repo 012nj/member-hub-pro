@@ -233,7 +233,7 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
         : await createDirectConversation({ id: user.id, name: user.name }, { id: otherId, name: other?.name || otherId, avatar: other?.avatar });
       setConversations((prev) => [conv, ...prev.filter((c) => c.id !== conv.id)]);
       setShowNewGroup(false);
-      setActiveConv?.(conv as any);
+      setActiveConv(conv);
       loadMessages(conv.id);
       if (!isDemo) loadConversations();
     } catch {
@@ -730,7 +730,7 @@ function ConversationListItem({ conv, active, currentUserId, onClick }: Conversa
     >
       <Avatar
         id={previewParticipant?.user_id || conv.created_by}
-        name={convTitle(conv, currentUserIdForTitle)}
+        name={convTitle(conv, currentUserId)}
         url={previewParticipant?.user_avatar}
         size="w-11 h-11"
         fallbackClass={avatarClass}
@@ -742,7 +742,7 @@ function ConversationListItem({ conv, active, currentUserId, onClick }: Conversa
             'text-sm truncate',
             active ? 'font-semibold text-neutral-900' : 'font-medium text-neutral-800',
           )}>
-            {convTitle(conv, currentUserIdForTitle)}
+            {convTitle(conv, currentUserId)}
           </p>
           {lastMsg && (
             <span className="text-2xs text-neutral-400 flex-shrink-0">
