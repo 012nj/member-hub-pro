@@ -301,9 +301,16 @@ export interface Defaulter {
   phone: string;
   missed_periods: number;
   outstanding_amount: number;
-  last_payment_date: string;
+  last_payment_date: string | null;
   status: 'warning' | 'critical' | 'action';
+  contribution_arrears?: number;
+  penalty_balance?: number;
+  penalty_count?: number;
+  account_status?: 'active' | 'suspended';
+  last_notice_at?: string | null;
 }
+
+export type DefaulterAction = 'suspend' | 'activate' | 'warning' | 'reminder';
 
 export interface Expense {
   id: string;

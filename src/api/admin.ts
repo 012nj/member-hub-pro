@@ -12,6 +12,7 @@ import type {
   Donation,
   DonationCampaign,
   Defaulter,
+  DefaulterAction,
   Expense,
   BankTransaction,
   Notification,
@@ -178,6 +179,12 @@ export const adminApi = {
   getBeneficiaries: (page = 1) => api.get<Paginated<Beneficiary>>('/admin/beneficiaries', { page }),
 
   getDefaulters: () => api.get<Defaulter[]>('/admin/defaulters'),
+
+  defaulterAction: (memberId: string, action: DefaulterAction, body?: { message?: string; reason?: string }) =>
+    api.post<{ message: string }>(`/admin/defaulters/${memberId}/${action}`, body),
+
+  defaulterBulk: (action: 'warning' | 'reminder', memberIds: string[]) =>
+    api.post<{ message: string }>(`/admin/defaulters/bulk/${action}`, { member_ids: memberIds }),
 
   getPayments: (page = 1) =>
     api.get<Paginated<Contribution>>('/admin/payments', { page }),

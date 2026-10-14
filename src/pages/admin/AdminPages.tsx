@@ -148,22 +148,7 @@ export function AdminBeneficiaryRequests() {
   }} />;
 }
 
-export function AdminDefaulters() {
-  return <GenericListPage config={{
-    title: 'Defaulters', subtitle: 'Members with outstanding contributions', icon: AlertCircle,
-    fetchFn: () => mockAdmin.getDefaulters().then(d => ({ data: d, current_page: 1, last_page: 1, total: d.length })),
-    queryKey: () => queryKeys.adminDefaulters,
-    exportFilename: 'defaulters.csv',
-    columns: [
-      { key: 'member_name', label: 'Member', render: r => <span className="font-medium">{r.member_name}</span> },
-      { key: 'member_number', label: 'Member #' },
-      { key: 'phone', label: 'Phone' },
-      { key: 'missed_periods', label: 'Missed' },
-      { key: 'outstanding_amount', label: 'Outstanding', render: r => <span className="text-error-600 font-semibold">{formatCurrency(r.outstanding_amount)}</span> },
-      { key: 'status', label: 'Status', render: r => <Badge status={r.status}>{r.status}</Badge> },
-    ],
-  }} />;
-}
+export { AdminDefaulters } from './AdminDefaulters';
 
 export function AdminNotifications() {
   return <GenericListPage config={{

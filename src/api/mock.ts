@@ -247,6 +247,19 @@ export const mockAdmin = {
   getBeneficiaries: (page = 1) => tryApi(() => adminApi.getBeneficiaries(page),
     () => paginate(demoBeneficiaries, page)),
   getDefaulters: () => tryApi(() => adminApi.getDefaulters(), demoDefaulters),
+  defaulterAction: (id: string, action: import('@/types').DefaulterAction, body?: { message?: string; reason?: string }) =>
+    tryApi(() => adminApi.defaulterAction(id, action, body), () => {
+      const d = demoDefaulters.find(x => x.id === id);
+      if (d && action === 'suspend') d.account_status = 'suspended';
+      if (d && action === 'activate') d.account_status = 'active';
+      if (d && (action === 'warning' || action === 'reminder')) d.last_notice_at = new Date().toISOString();
+      return { message: `${action} applied` };
+    }),
+  defaulterBulk: (action: 'warning' | 'reminder', ids: string[]) =>
+    tryApi(() => adminApi.defaulterBulk(action, ids), () => {
+      demoDefaulters.filter(d => ids.includes(d.id)).forEach(d => { d.last_notice_at = new Date().toISOString(); });
+      return { message: `${ids.length} members notified` };
+    }),
   getPayments: (page = 1) => tryApi(() => adminApi.getPayments(page),
     () => paginate(demoContributions, page)),
   getUnmatchedPayments: () => tryApi(() => adminApi.getUnmatchedPayments(),

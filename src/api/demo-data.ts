@@ -239,9 +239,9 @@ export const demoCampaigns: DonationCampaign[] = [
 ];
 
 export const demoDefaulters: Defaulter[] = [
-  { id: 'df1', member_name: 'Peter Mbugua Thuo', member_number: 'KHW-2022-0103', phone: '+254 700 678 901', missed_periods: 3, outstanding_amount: 6000, last_payment_date: daysAgo(95), status: 'critical' },
-  { id: 'df2', member_name: 'Esther Nyambura Githae', member_number: 'KHW-2023-0110', phone: '+254 745 901 234', missed_periods: 2, outstanding_amount: 4000, last_payment_date: daysAgo(65), status: 'warning' },
-  { id: 'df3', member_name: 'Daniel Kiprop Kiptoo', member_number: 'KHW-2024-0167', phone: '+254 756 012 345', missed_periods: 1, outstanding_amount: 2000, last_payment_date: daysAgo(35), status: 'warning' },
+  { id: 'df1', member_name: 'Peter Mbugua Thuo', member_number: 'KHW-2022-0103', phone: '+254 700 678 901', missed_periods: 3, outstanding_amount: 7500, contribution_arrears: 6000, penalty_balance: 1500, penalty_count: 3, account_status: 'active', last_payment_date: daysAgo(95), status: 'critical' },
+  { id: 'df2', member_name: 'Esther Nyambura Githae', member_number: 'KHW-2023-0110', phone: '+254 745 901 234', missed_periods: 2, outstanding_amount: 5000, contribution_arrears: 4000, penalty_balance: 1000, penalty_count: 2, account_status: 'active', last_payment_date: daysAgo(65), status: 'action' },
+  { id: 'df3', member_name: 'Daniel Kiprop Kiptoo', member_number: 'KHW-2024-0167', phone: '+254 756 012 345', missed_periods: 1, outstanding_amount: 2500, contribution_arrears: 2000, penalty_balance: 500, penalty_count: 1, account_status: 'suspended', last_payment_date: daysAgo(35), status: 'warning' },
 ];
 
 export const demoExpenses: Expense[] = [
