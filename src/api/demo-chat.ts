@@ -316,7 +316,7 @@ export const demoChatData = {
   createDirect(meId: string, meName: string, otherId: string): GroupConversation {
     initConversations();
     const existing = demoConversations.find(
-      (c) => c.type === 'direct' && c.participants.some((p) => p.user_id === otherId) && c.participants.some((p) => p.user_id === meId),
+      (c) => c.type === 'direct' && c.participants?.some((p) => p.user_id === otherId) && c.participants?.some((p) => p.user_id === meId),
     );
     if (existing) return { ...existing, _messages: undefined, _readBy: undefined, _typing: undefined } as GroupConversation;
     const other = demoChatMembers.find((x) => x.id === otherId);
