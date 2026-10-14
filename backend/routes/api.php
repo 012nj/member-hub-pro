@@ -332,6 +332,10 @@ Route::prefix('/signatures')->middleware(['auth.jwt', 'throttle:api'])->group(fu
 Route::prefix('/minutes')->middleware(['auth.jwt', 'throttle:api'])->group(function () {
     Route::get('/', [MeetingMinutesController::class, 'index']);
     Route::get('/executive-members', [MeetingMinutesController::class, 'executiveMembers']);
+    Route::get('/templates', [\App\Http\Controllers\Api\MinuteTemplateController::class, 'index']);
+    Route::post('/templates', [\App\Http\Controllers\Api\MinuteTemplateController::class, 'store']);
+    Route::put('/templates/{id}', [\App\Http\Controllers\Api\MinuteTemplateController::class, 'update']);
+    Route::delete('/templates/{id}', [\App\Http\Controllers\Api\MinuteTemplateController::class, 'destroy']);
     Route::post('/', [MeetingMinutesController::class, 'store']);
     Route::get('/{id}', [MeetingMinutesController::class, 'show']);
     Route::put('/{id}', [MeetingMinutesController::class, 'update']);

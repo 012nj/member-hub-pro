@@ -46,6 +46,10 @@ abstract class PortalController extends Controller
     protected function memberId(Request $request): string
     {
         $identity = $this->identity($request);
+        // Admin "view as member": ViewAsMember middleware already validated the target.
+        if (! empty($identity['viewing_member_id'])) {
+            return (string) $identity['viewing_member_id'];
+        }
         $memberId = $identity['member_id'] ?? null;
         if (! $memberId) {
             $memberId = DB::table('members')->where('user_id', $identity['user_id'])->value('id');

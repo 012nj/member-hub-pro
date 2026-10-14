@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth.jwt', 'throttle:api'])->group(function () {
     Route::get('auth/appearance', [\App\Http\Controllers\Api\V1\AppearanceController::class, 'show']);
     Route::put('auth/appearance', [\App\Http\Controllers\Api\V1\AppearanceController::class, 'update']);
-    Route::prefix('member')->group(function () {
+    Route::prefix('member')->middleware('view.as.member')->group(function () {
         Route::get('dashboard', [M::class, 'dashboard']);
         Route::get('contributions', [M::class, 'contributions']);
         Route::get('beneficiaries', [M::class, 'beneficiaries']);
@@ -89,7 +89,9 @@ Route::middleware(['auth.jwt', 'throttle:api'])->group(function () {
             Route::get('members/{id}/beneficiaries', [A::class, 'memberBeneficiaries']);
             Route::get('contributions', [A::class, 'contributions']);
             Route::get('beneficiaries', [A::class, 'beneficiaries']);
-            Route::get('defaulters', [A::class, 'defaulters']);
+            Route::get('defaulters', [\App\Http\Controllers\Api\V1\DefaulterController::class, 'index']);
+            Route::post('defaulters/bulk/{action}', [\App\Http\Controllers\Api\V1\DefaulterController::class, 'bulk'])->whereIn('action', ['warning', 'reminder']);
+            Route::post('defaulters/{id}/{action}', [\App\Http\Controllers\Api\V1\DefaulterController::class, 'action'])->whereIn('action', ['suspend', 'activate', 'warning', 'reminder']);
             Route::get('payments', [A::class, 'payments']);
             Route::get('unmatched', [A::class, 'unmatched']);
             Route::post('unmatched/{id}/match', [A::class, 'matchUnmatched']);
