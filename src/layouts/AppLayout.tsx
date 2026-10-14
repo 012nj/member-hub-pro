@@ -94,7 +94,7 @@ function SidebarNav({ items, isActive, onNavigate }: { items: NavItem[]; isActiv
 }
 
 export function AppLayout({ children }: { children?: ReactNode }) {
-  const { user, logout, switchRole, demoMode, setDemoMode } = useAuth();
+  const { user, logout, switchRole, demoMode, setDemoMode, viewingAs, stopViewAs, realUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -278,6 +278,19 @@ export function AppLayout({ children }: { children?: ReactNode }) {
 
         {/* Page Content */}
         <main className={classNames('portal-content flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8', isMember && 'pb-20 lg:pb-5')}>
+          {viewingAs && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+              <span>
+                You are viewing <strong>{viewingAs.name}</strong>'s dashboard as {realUser?.name || 'admin'}. Everything here is exactly what this member sees.
+              </span>
+              <button
+                onClick={() => { const back = realUser ? roleDashboardPath[realUser.role] : '/admin'; stopViewAs(); navigate(back === '/admin' ? '/admin/members' : back); }}
+                className="rounded-lg bg-warning-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-warning-700"
+              >
+                Return to my dashboard
+              </button>
+            </div>
+          )}
           {children || <Outlet />}
         </main>
 
