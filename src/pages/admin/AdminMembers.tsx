@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@/lib/router-compat';
-import { Users, ArrowLeft, Coins, HeartHandshake, AlertCircle, User as UserIcon } from 'lucide-react';
+import { Users, ArrowLeft, Coins, HeartHandshake, AlertCircle, User as UserIcon, Eye } from 'lucide-react';
+import { useAuth } from '@/auth/AuthContext';
+import { Button } from '@/components/ui';
 import { mockAdmin } from '@/api/mock';
 import { queryKeys } from '@/lib/query';
 import { Card, PageHeader, Badge, Avatar, LoadingState, ErrorState, EmptyState, SearchInput, Select, Pagination, StatCard, DataTable } from '@/components/ui';
@@ -58,6 +60,7 @@ export function AdminMembers() {
 export function AdminMemberDetail() {
   const { memberId = '' } = useParams();
   const navigate = useNavigate();
+  const { startViewAs } = useAuth();
 
   const { data: member, isLoading, isError } = useQuery({
     queryKey: queryKeys.adminMemberDetail(memberId),
@@ -80,7 +83,16 @@ export function AdminMemberDetail() {
   return (
     <div>
       <button onClick={() => navigate('/admin/members')} className="inline-flex items-center gap-1.5 text-sm text-primary-700 font-medium mb-4"><ArrowLeft size={16} /> Back to Members</button>
-      <PageHeader title={member.name} subtitle={`${member.member_number} • ${member.role}`} icon={<UserIcon size={20} />} />
+      <PageHeader
+        title={member.name}
+        subtitle={`${member.member_number} • ${member.role}`}
+        icon={<UserIcon size={20} />}
+        action={
+          <Button onClick={() => { startViewAs({ id: member.id, name: member.name, member_number: member.member_number }); navigate('/member'); }}>
+            <Eye size={16} className="mr-1.5 inline" /> View as member
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <StatCard label="Contributions" value={formatCurrency(member.contributions_total)} icon={<Coins size={18} />} />
