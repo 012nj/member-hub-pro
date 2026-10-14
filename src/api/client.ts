@@ -22,6 +22,28 @@ export function setDemoMode(enabled: boolean): void {
   }
 }
 
+const VIEW_AS_KEY = 'khwwc_view_as_member';
+
+export interface ViewAsMember { id: string; name: string; member_number?: string }
+
+export function getViewAsMember(): ViewAsMember | null {
+  try {
+    const raw = sessionStorage.getItem(VIEW_AS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setViewAsMember(member: ViewAsMember | null): void {
+  try {
+    if (member) sessionStorage.setItem(VIEW_AS_KEY, JSON.stringify(member));
+    else sessionStorage.removeItem(VIEW_AS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function getToken(): string | null {
   try {
     return sessionStorage.getItem(TOKEN_KEY);
@@ -42,6 +64,7 @@ export function clearToken(): void {
   try {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(VIEW_AS_KEY);
   } catch {
     /* ignore */
   }
@@ -101,6 +124,8 @@ async function request<T>(
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const viewAs = getViewAsMember();
+  if (viewAs) headers['X-View-As-Member'] = viewAs.id;
 
   let response: Response;
   try {

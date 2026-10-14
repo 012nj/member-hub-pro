@@ -6,6 +6,7 @@ import {
 import {
   clearToken, setToken, setStoredUser, getStoredUser,
   getDemoMode, setDemoMode as persistDemoMode,
+  getViewAsMember, setViewAsMember, type ViewAsMember,
 } from '@/api/client';
 import { authApi, phoneToSyntheticEmail } from '@/api/auth';
 import { mockAuth } from '@/api/mock';
@@ -19,6 +20,11 @@ interface AuthContextValue {
   switchRole: (role: UserRole) => void;
   updatePassword: (current: string, next: string) => Promise<void>;
   demoMode: boolean;
+  /** The signed-in admin while viewing as a member; null otherwise. */
+  realUser: AuthUser | null;
+  viewingAs: ViewAsMember | null;
+  startViewAs: (member: ViewAsMember) => void;
+  stopViewAs: () => void;
   setDemoMode: (enabled: boolean) => void;
 }
 
@@ -31,11 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [demoMode, setDemoModeState] = useState(getDemoMode);
+  const [viewingAs, setViewingAs] = useState<ViewAsMember | null>(null);
 
   useEffect(() => {
     const stored = getStoredUser<AuthUser>();
     if (stored) {
       setUser(stored);
+      setViewingAs(getViewAsMember());
     }
     setLoading(false);
   }, []);
@@ -57,8 +65,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearToken();
       setUser(null);
+      setViewingAs(null);
     }
   }, [demoMode]);
+
+  const startViewAs = useCallback((member: ViewAsMember) => {
+    setViewAsMember(member);
+    setViewingAs(member);
+  }, []);
+
+  const stopViewAs = useCallback(() => {
+    setViewAsMember(null);
+    setViewingAs(null);
+  }, []);
+
+  // While viewing as a member the whole app behaves as that member's session.
+  const effectiveUser: AuthUser | null = user && viewingAs
+    ? { ...user, role: 'member', name: viewingAs.name, must_change_password: false }
+    : user;
 
   const switchRole = useCallback((role: UserRole) => {
     if (!demoMode || !user) return;
@@ -112,7 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, login, logout, switchRole, updatePassword,
+      user: effectiveUser, loading, login, logout, switchRole, updatePassword,
+      realUser: viewingAs ? user : null, viewingAs, startViewAs, stopViewAs,
       demoMode, setDemoMode: changeDemoMode,
     }}>
       {children}
