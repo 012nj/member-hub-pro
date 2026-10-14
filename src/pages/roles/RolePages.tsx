@@ -8,7 +8,7 @@ import {
   TrendingDown, Bell, Printer, FileX,
 } from 'lucide-react';
 import { mockSecretary, mockChairperson, mockOffice, mockViceSecretary } from '@/api/mock';
-import { minutesApi, type HydratedMinute, type MinuteAttendance, type MinuteMember, type CreateMinutePayload, type MinuteStatus } from '@/api/minutes';
+import { minutesApi, minuteTemplatesApi, type MinuteTemplate, type HydratedMinute, type MinuteAttendance, type MinuteMember, type CreateMinutePayload, type MinuteStatus } from '@/api/minutes';
 import { queryKeys } from '@/lib/query';
 import {
   Card, PageHeader, Badge, Button, LoadingState, ErrorState,
@@ -413,6 +413,34 @@ function MinutesForm({
   });
 
   const [attendance, setAttendance] = useState<Record<string, AttendanceBucket | null>>({});
+  const queryClient = useQueryClient();
+  const [templateMsg, setTemplateMsg] = useState<string | null>(null);
+  const { data: templates } = useQuery({ queryKey: ['minute-templates'], queryFn: () => minuteTemplatesApi.list() });
+  const applyTemplate = (id: string) => {
+    const t = (templates || []).find((x: MinuteTemplate) => x.id === id);
+    if (!t) return;
+    setForm((f) => ({
+      ...f,
+      title: f.title || t.title || '',
+      meeting_type: t.meeting_type,
+      agenda: t.agenda || '',
+      discussions: t.discussions || '',
+      decisions: t.decisions || '',
+      action_items: t.action_items || '',
+    }));
+    if (t.meeting_type !== form.meeting_type) setAttendance({});
+    setTemplateMsg(`Template "${t.name}" applied`);
+  };
+  const saveAsTemplate = async () => {
+    const name = window.prompt('Template name', form.title || 'New template');
+    if (!name?.trim()) return;
+    await minuteTemplatesApi.create({
+      name: name.trim(), meeting_type: form.meeting_type as 'general' | 'executive', title: form.title,
+      agenda: form.agenda, discussions: form.discussions, decisions: form.decisions, action_items: form.action_items,
+    });
+    queryClient.invalidateQueries({ queryKey: ['minute-templates'] });
+    setTemplateMsg(`Saved as template "${name.trim()}"`);
+  };
   const [memberSearch, setMemberSearch] = useState('');
   const [showMemberPicker, setShowMemberPicker] = useState(false);
 
@@ -488,6 +516,22 @@ function MinutesForm({
   return (
     <Modal open onClose={onClose} title={editingId ? 'Edit Minutes' : 'Create Meeting Minutes'} size="xl">
       <div className="space-y-5 max-h-[70vh] overflow-y-auto">
+        {/* Template */}
+        <div className="rounded-xl border border-primary-100 bg-primary-50 p-3 space-y-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[200px]">
+              <Select label="Start from a minute template" value="" onChange={(e) => applyTemplate(e.target.value)}>
+                <option value="">Choose a template…</option>
+                {(templates || []).map((t: MinuteTemplate) => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.meeting_type})</option>
+                ))}
+              </Select>
+            </div>
+            <Button variant="secondary" size="sm" onClick={saveAsTemplate}>Save as template</Button>
+          </div>
+          {templateMsg && <p className="text-xs text-primary-700">{templateMsg}</p>}
+        </div>
+
         {/* Meeting Details */}
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Meeting Details</h4>
