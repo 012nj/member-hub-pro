@@ -39,3 +39,19 @@ describe("AppearanceProvider", () => {
     expect(container.querySelector(".floral-backdrop img")).toBeInTheDocument();
   });
 });
+
+describe("AppearanceProvider morning greeting", () => {
+  it("can be dismissed with the keyboard so the page is never left locked", async () => {
+    localStorage.removeItem(MORNING_STORAGE_KEY);
+    const { container } = render(
+      <AppearanceProvider animateBackground={false}>
+        <main>App</main>
+      </AppearanceProvider>,
+    );
+    expect(container.querySelector(".app-experience")).toHaveAttribute("inert");
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(container.querySelector(".morning-screen")).toBeNull());
+    expect(container.querySelector(".app-experience")).not.toHaveAttribute("inert");
+  });
+});

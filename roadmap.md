@@ -24,3 +24,5 @@
 - [x] Admin "View as member" full takeover (X-View-As-Member header, member routes honour it)
 - [x] Chat: private 1-to-1 chats plus group chats
 - [ ] Run new Laravel migration on hosting (php artisan migrate) — needs server access
+
+- [ ] Push sign-in freeze fixes to github.com/012nj/member-hub-pro (needs write access)

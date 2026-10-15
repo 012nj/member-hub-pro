@@ -122,7 +122,8 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .floral-frame.is-visible { opacity: 1; }
 .floral-backdrop::after { content: none; }
 .morning-screen { position: fixed; inset: 0; z-index: 9999; background: var(--surface); display: grid; place-items: center; }
-.morning-screen img { height: 100%; width: 100%; object-fit: contain; }
+.morning-screen img { position: absolute; inset: 0; height: 100%; width: 100%; object-fit: contain; }
+.morning-brand { position: absolute; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .private-shell { background: transparent; }
 .private-shell .bg-white, .public-shell .bg-white { background-color: var(--panel); }
 .private-shell .bg-neutral-50, .private-shell .bg-neutral-100 { background-color: var(--brand-soft); }

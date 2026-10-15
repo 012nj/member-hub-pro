@@ -106,6 +106,16 @@ export function AppearanceProvider({
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [showMorningGreeting]);
 
+  // The greeting locks the page (inert) while visible, so it must always be dismissable.
+  useEffect(() => {
+    if (!showMorning) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Enter") setShowMorning(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showMorning]);
+
   useEffect(() => {
     if (!animateBackground || paused || showMorning) return;
     const timer = window.setInterval(() => {
@@ -225,7 +235,7 @@ export function AppearanceProvider({
           />
           <div className="morning-brand">
             <span id="morning-title">Good morning, KHCWW</span>
-            <Button type="button" onClick={() => setShowMorning(false)}>
+            <Button type="button" autoFocus onClick={() => setShowMorning(false)}>
               Continue
             </Button>
           </div>

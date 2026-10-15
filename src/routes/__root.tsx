@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useLocation,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -100,7 +101,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// The cPanel build mounts the app inside <div id="root"> (spa/index.html already owns
+// <html>/<body>). Rendering <html>/<body> from React there makes React 19 claim the
+// document singletons inside a nested root, which sends its selectionchange handler
+// into an infinite loop the moment a text field is focused (the /login freeze).
+const IS_STATIC_SPA = import.meta.env.VITE_STATIC_SPA === "true";
+
 function RootShell({ children }: { children: ReactNode }) {
+  if (IS_STATIC_SPA) {
+    return (
+      <>
+        <HeadContent />
+        {children}
+      </>
+    );
+  }
   return (
     <html lang="en">
       <head>
@@ -116,11 +131,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  // Never cover the sign-in screens with the full-page morning greeting: it makes the page inert.
+  const pathname = useLocation({ select: (l) => l.pathname });
+  const onAuthScreen = pathname === "/login" || pathname.startsWith("/force-password");
 
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <AppearanceProvider><Outlet /></AppearanceProvider>
+      <AppearanceProvider showMorningGreeting={!onAuthScreen}><Outlet /></AppearanceProvider>
     </QueryClientProvider>
   );
 }

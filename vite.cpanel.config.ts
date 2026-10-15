@@ -11,6 +11,10 @@ export default defineConfig({
   root: resolve(projectRoot, "spa"),
   envDir: projectRoot,
   base: "/",
+  define: {
+    // Static SPA build: RootShell must not render <html>/<body> (see src/routes/__root.tsx).
+    "import.meta.env.VITE_STATIC_SPA": JSON.stringify("true"),
+  },
   publicDir: resolve(projectRoot, "public"),
   plugins: [
     TanStackRouterVite({
