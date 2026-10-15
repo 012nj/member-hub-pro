@@ -22,9 +22,9 @@ abstract class PortalController extends Controller
 {
     protected const STAFF_ROLES = ['admin', 'super_admin', 'treasurer', 'chairperson', 'vice_chairperson', 'secretary', 'vice_secretary', 'office', 'patron'];
 
-    protected function identity(Request $request): array
+    protected function identity(?Request $request = null): array
     {
-        $identity = $request->attributes->get('identity');
+        $identity = ($request ?? request())->attributes->get('identity');
         if (! is_array($identity) || empty($identity['user_id'])) {
             throw new HttpException(401, 'invalid_token', 'Authentication required.');
         }
@@ -37,7 +37,7 @@ abstract class PortalController extends Controller
     {
         $identity = $this->identity($request);
         $held = array_map('strval', (array) ($identity['roles'] ?? []));
-        if (in_array('super_admin', $held, true) || array_intersect($roles, $held)) {
+        if (array_intersect($roles, $held)) {
             return $identity;
         }
         throw new HttpException(403, 'forbidden', 'You do not have permission for this action.');

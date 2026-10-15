@@ -48,6 +48,7 @@ export function ChatWidget() {
 
   const contextType: 'admin_assistant' | 'secretary_assistant' =
     user?.role === 'secretary' || user?.role === 'vice-secretary' || user?.role === 'chairperson'
+      || user?.role === 'vice-chairperson' || user?.role === 'patron'
       ? 'secretary_assistant'
       : 'admin_assistant';
 

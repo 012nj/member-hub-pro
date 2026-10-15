@@ -10,6 +10,9 @@ import {
   Bell, MoreHorizontal, ArrowUpRight, Wallet, Receipt,
 } from 'lucide-react';
 import { mockSuperAdmin, mockAdmin, mockTreasurer } from '@/api/mock';
+import { adminApi } from '@/api/admin';
+import { superAdminApi } from '@/api/roles';
+import { MemberRoleManager } from '@/pages/admin/AdminMembers';
 import { queryKeys } from '@/lib/query';
 import {
   Card, PageHeader, Badge, LoadingState, ErrorState,
@@ -131,34 +134,28 @@ export function SuperAdminDashboard() {
 
   const { data: sysData, isLoading: sysLoading } = useQuery({
     queryKey: queryKeys.superAdminDashboard,
-    queryFn: () => mockSuperAdmin.dashboard(),
-  });
-
-  const { data: adminData, isLoading: adminLoading } = useQuery({
-    queryKey: queryKeys.adminDashboard,
-    queryFn: () => mockAdmin.dashboard(),
+    queryFn: () => superAdminApi.dashboard(),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: membersData, isLoading: membersLoading } = useQuery({
-    queryKey: [...queryKeys.adminMembers({ page: memberPage, search: memberSearch, status: '' }), memberSearch],
-    queryFn: () => mockAdmin.getMembers({ page: memberPage, search: memberSearch }),
+    queryKey: queryKeys.superAdminMembers({ page: memberPage, search: memberSearch }),
+    queryFn: () => adminApi.getSuperAdminMembers({ page: memberPage, search: memberSearch }),
+    refetchInterval: 30_000,
   });
 
   const { data: contribData } = useQuery({
-    queryKey: queryKeys.adminContributions({ page: 1, status: '' }),
-    queryFn: () => mockAdmin.getContributions({ page: 1 }),
+    queryKey: queryKeys.superAdminContributions({ page: 1 }),
+    queryFn: () => adminApi.getSuperAdminContributions({ page: 1 }),
+    refetchInterval: 30_000,
   });
 
-  const { data: bankData } = useQuery({
-    queryKey: queryKeys.treasurerBankStatement(1),
-    queryFn: () => mockTreasurer.getBankStatement(1),
-  });
+  if (sysLoading) return <LoadingState />;
 
-  if (sysLoading || adminLoading) return <LoadingState />;
-
-  if (!sysData || !adminData) return <ErrorState message="Unable to load the overview." />;
+  if (!sysData) return <ErrorState message="Unable to load the overview." />;
   const sys = sysData;
-  const adm = adminData;
+  const adm = sysData;
 
   const trend = adm.contributions_trend ?? [];
 
@@ -167,15 +164,12 @@ export function SuperAdminDashboard() {
   const activeCount = adm.active_members ?? 0;
   const totalMembers = adm.total_members ?? 0;
   const pendingCount = adm.pending_approvals ?? 0;
-  const inactiveCount = Math.max(totalMembers - activeCount - pendingCount, 0);
+  const pendingMembersCount = adm.pending_members ?? 0;
+  const inactiveCount = Math.max(totalMembers - activeCount - pendingMembersCount, 0);
 
   const recentContribs: Contribution[] = contribData?.data ?? [];
-  const bankTxns = bankData?.data ?? [];
-  const pendingBank = bankTxns.filter((t: any) => !t.matched).length;
 
   const topMembers = (adm.recent_signups ?? [])
-    .map((m: Member) => ({ ...m, contribs: m.contributions_total ?? 0 }))
-    .sort((a: any, b: any) => b.contribs - a.contribs)
     .slice(0, 5);
 
   const activePct = totalMembers ? Math.round((activeCount / totalMembers) * 100) : 0;
@@ -249,7 +243,7 @@ export function SuperAdminDashboard() {
             <DonutChart
               segments={[
                 { label: 'Active', value: activeCount, color: 'var(--brand)' },
-                { label: 'Pending', value: pendingCount, color: 'var(--warning)' },
+                { label: 'Pending', value: pendingMembersCount, color: 'var(--warning)' },
                 { label: 'Inactive', value: inactiveCount, color: 'var(--danger)' },
               ]}
               centerLabel={String(totalMembers)}
@@ -258,7 +252,7 @@ export function SuperAdminDashboard() {
             <div className="w-full mt-5 space-y-2.5">
               {[
                 { label: 'Active', value: activeCount, pct: activePct, color: 'bg-primary-500' },
-                { label: 'Pending', value: pendingCount, pct: Math.round((pendingCount / (totalMembers || 1)) * 100), color: 'bg-warning-500' },
+                { label: 'Pending', value: pendingMembersCount, pct: Math.round((pendingMembersCount / (totalMembers || 1)) * 100), color: 'bg-warning-500' },
                 { label: 'Inactive', value: inactiveCount, pct: Math.round((inactiveCount / (totalMembers || 1)) * 100), color: 'bg-error-400' },
               ].map(s => (
                 <div key={s.label} className="flex items-center justify-between">
@@ -345,7 +339,7 @@ export function SuperAdminDashboard() {
         {/* Top contributors */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-base font-bold text-neutral-900">Recent member contributions</h3>
+            <h3 className="text-base font-bold text-neutral-900">Recent signups</h3>
             <Link to="/admin/members" className="text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1">
               View all <ArrowRight size={12} />
             </Link>
@@ -365,7 +359,7 @@ export function SuperAdminDashboard() {
                   <p className="text-sm font-medium text-neutral-800 truncate">{m.name.split(' ').slice(0, 2).join(' ')}</p>
                   <p className="text-xs text-neutral-400">{m.member_number}</p>
                 </div>
-                <span className="text-sm font-bold text-neutral-900 flex-shrink-0">{formatCurrency(m.contribs)}</span>
+                <span className="text-xs text-neutral-500 flex-shrink-0">{relativeTime(m.joined_date)}</span>
               </div>
             ))}
           </div>
@@ -472,7 +466,7 @@ export function SuperAdminDashboard() {
       </Card>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {sys.system_health.map((metric: SystemMetric) => <StatCard key={metric.label} label={metric.label} value={metric.value} icon={<Server size={18} />} />)}
+        {sys.system_health.map((metric) => <StatCard key={metric.label} label={metric.label} value={metric.value} icon={<Server size={18} />} />)}
       </section>
     </div>
   );
@@ -487,22 +481,29 @@ export function SuperAdminMemberDetail() {
   const navigate = useNavigate();
   const { data: member, isLoading } = useQuery({
     queryKey: queryKeys.superAdminMember(memberId),
-    queryFn: () => mockSuperAdmin.getMemberDetail(memberId),
+    queryFn: () => superAdminApi.getMemberDetail(memberId),
   });
   if (isLoading) return <LoadingState />;
   if (!member) return <ErrorState message="Member not found" />;
   return (
-    <GenericDetailPage
-      title={member.name} subtitle={member.member_number} icon={Users}
-      onBack={() => navigate('/super-admin')}
-      sections={[
-        { label: 'Email', value: member.email }, { label: 'Phone', value: member.phone },
-        { label: 'Role', value: member.role }, { label: 'Status', value: <Badge status={member.status}>{member.status}</Badge> },
-        { label: 'County', value: member.county }, { label: 'Workplace', value: member.workplace },
-        { label: 'Contributions', value: formatCurrency(member.contributions_total) },
-        { label: 'Joined', value: formatDate(member.joined_date) },
-      ]}
-    />
+    <div className="space-y-4">
+      <GenericDetailPage
+        title={member.name} subtitle={member.member_number} icon={Users}
+        onBack={() => navigate('/super-admin')}
+        sections={[
+          { label: 'Email', value: member.email }, { label: 'Phone', value: member.phone },
+          { label: 'Roles', value: (member.roles ?? [member.role]).join(', ') }, { label: 'Status', value: <Badge status={member.status}>{member.status}</Badge> },
+          { label: 'County', value: member.county }, { label: 'Workplace', value: member.workplace },
+          { label: 'Contributions', value: formatCurrency(member.contributions_total) },
+          { label: 'Joined', value: formatDate(member.joined_date) },
+        ]}
+      />
+      <MemberRoleManager
+        member={member}
+        updateRoles={superAdminApi.updateMemberRoles}
+        cacheKey={queryKeys.superAdminMember(memberId)}
+      />
+    </div>
   );
 }
 

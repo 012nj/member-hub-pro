@@ -1,13 +1,81 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@/lib/router-compat';
 import { Users, ArrowLeft, Coins, HeartHandshake, AlertCircle, User as UserIcon, Eye } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Button } from '@/components/ui';
 import { mockAdmin } from '@/api/mock';
+import { adminApi } from '@/api/admin';
 import { queryKeys } from '@/lib/query';
 import { Card, PageHeader, Badge, Avatar, LoadingState, ErrorState, EmptyState, SearchInput, Select, Pagination, StatCard, DataTable } from '@/components/ui';
 import { formatCurrency, formatDate } from '@/lib/format';
+import type { UserRole } from '@/types';
+
+const assignableRoles: { role: UserRole; label: string }[] = [
+  { role: 'treasurer', label: 'Treasurer' },
+  { role: 'secretary', label: 'Secretary' },
+  { role: 'vice-secretary', label: 'Vice Secretary' },
+  { role: 'chairperson', label: 'Chairperson' },
+  { role: 'vice-chairperson', label: 'Vice Chairperson' },
+  { role: 'patron', label: 'Patron' },
+  { role: 'office', label: 'Office' },
+];
+
+type MemberRoleUpdater = (id: string, roles: UserRole[]) => Promise<{ member_id: string; roles: UserRole[] }>;
+
+export function MemberRoleManager({
+  member,
+  updateRoles = adminApi.updateMemberRoles,
+  cacheKey = queryKeys.adminMemberDetail(member.id),
+}: {
+  member: import('@/types').Member;
+  updateRoles?: MemberRoleUpdater;
+  cacheKey?: readonly unknown[];
+}) {
+  const queryClient = useQueryClient();
+  const [roles, setRoles] = useState<UserRole[]>(member.roles ?? (member.role ? [member.role] : []));
+  const mutation = useMutation({
+    mutationFn: () => updateRoles(member.id, roles.filter((role) => assignableRoles.some((option) => option.role === role))),
+    onSuccess: (result) => {
+      setRoles(result.roles);
+      queryClient.setQueryData(cacheKey, (current: typeof member | undefined) =>
+        current ? { ...current, roles: result.roles } : current,
+      );
+    },
+  });
+
+  useEffect(() => {
+    setRoles(member.roles ?? (member.role ? [member.role] : []));
+  }, [member.id, member.role, member.roles]);
+
+  return (
+    <Card className="p-5 mt-4">
+      <h3 className="text-sm font-bold mb-1">Assigned roles</h3>
+      <p className="text-xs text-neutral-500 mb-4">The member dashboard remains available. Each selected role adds only its own dashboard and permissions.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {assignableRoles.map(({ role, label }) => (
+          <label key={role} className="flex items-center gap-2 rounded-lg border border-neutral-100 px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={roles.includes(role)}
+              onChange={(event) => setRoles((current) =>
+                event.target.checked
+                  ? [...current, role]
+                  : current.filter((assignedRole) => assignedRole !== role),
+              )}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      {mutation.isError && <p role="alert" className="mt-3 text-sm text-error-600">Could not update the member's roles. Please retry.</p>}
+      {mutation.isSuccess && <p className="mt-3 text-sm text-success-700">Role assignments saved.</p>}
+      <Button className="mt-4" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        {mutation.isPending ? 'Saving…' : 'Save role assignments'}
+      </Button>
+    </Card>
+  );
+}
 
 export function AdminMembers() {
   const [page, setPage] = useState(1);
@@ -85,7 +153,7 @@ export function AdminMemberDetail() {
       <button onClick={() => navigate('/admin/members')} className="inline-flex items-center gap-1.5 text-sm text-primary-700 font-medium mb-4"><ArrowLeft size={16} /> Back to Members</button>
       <PageHeader
         title={member.name}
-        subtitle={`${member.member_number} • ${member.role}`}
+        subtitle={`${member.member_number} • ${(member.roles ?? [member.role]).join(', ')}`}
         icon={<UserIcon size={20} />}
         action={
           <Button onClick={() => { startViewAs({ id: member.id, name: member.name, member_number: member.member_number }); navigate('/member'); }}>
@@ -127,6 +195,8 @@ export function AdminMemberDetail() {
           )}
         </Card>
       </div>
+
+      <MemberRoleManager member={member} />
 
       <Card className="p-5 mt-4">
         <h3 className="text-sm font-bold mb-3">Recent Contributions</h3>

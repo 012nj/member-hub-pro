@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { Link } from '@/lib/router-compat';
 import {
   Upload, Coins, CreditCard, FileText, Landmark, ArrowRight,
   TrendingUp, TrendingDown, Bell, Calendar, Wallet,
   ArrowUpRight, ArrowDownRight, Receipt, MoreHorizontal,
 } from 'lucide-react';
-import { mockTreasurer, mockAdmin } from '@/api/mock';
+import { mockTreasurer } from '@/api/mock';
 import { queryKeys } from '@/lib/query';
 import { Card, StatCard, LoadingState, ErrorState } from '@/components/ui';
 import { formatCurrency, initials, classNames } from '@/lib/format';
@@ -42,20 +42,31 @@ const QUICK_ACTIONS = [
 export default function TreasurerDashboard() {
   const { user } = useAuth();
 
-  const { data: stats, isLoading, isError, refetch } = useQuery({
-    queryKey: queryKeys.treasurerDashboard,
-    queryFn: () => mockTreasurer.dashboard(),
+  const [statsQuery, contribQuery, bankQuery] = useQueries({
+    queries: [
+      {
+        queryKey: queryKeys.treasurerDashboard,
+        queryFn: () => mockTreasurer.dashboard(),
+      },
+      {
+        queryKey: queryKeys.treasurerContributions({ page: 1, status: '' }),
+        queryFn: () => mockTreasurer.getContributions({ page: 1 }),
+      },
+      {
+        queryKey: queryKeys.treasurerBankStatement(1),
+        queryFn: () => mockTreasurer.getBankStatement(1),
+      },
+    ],
   });
 
-  const { data: contribData } = useQuery({
-    queryKey: queryKeys.adminContributions({ page: 1, status: '' }),
-    queryFn: () => mockAdmin.getContributions({ page: 1 }),
-  });
-
-  const { data: bankData } = useQuery({
-    queryKey: queryKeys.treasurerBankStatement(1),
-    queryFn: () => mockTreasurer.getBankStatement(1),
-  });
+  const stats = statsQuery.data;
+  const contribData = contribQuery.data;
+  const bankData = bankQuery.data;
+  const isLoading = statsQuery.isLoading || contribQuery.isLoading || bankQuery.isLoading;
+  const isError = statsQuery.isError || contribQuery.isError || bankQuery.isError;
+  const refetch = () => {
+    void Promise.all([statsQuery.refetch(), contribQuery.refetch(), bankQuery.refetch()]);
+  };
 
   if (isLoading) return <LoadingState />;
   if (isError || !stats) return <ErrorState message="Failed to load dashboard" onRetry={refetch} />;

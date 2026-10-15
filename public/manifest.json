@@ -1,16 +1,22 @@
 {
-  "name": "KHWWC — Kirinyaga Healthcare Workers Welfare",
-  "short_name": "KHWWC",
+  "name": "KHCWW — Kirinyaga Healthcare Workers Welfare",
+  "short_name": "KHCWW",
   "description": "Member portal for contributions, beneficiaries, statements, donations, events, and more.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#f97316",
+  "theme_color": "#087f77",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/images/image%20copy%203.png",
-      "sizes": "1024x1024",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }

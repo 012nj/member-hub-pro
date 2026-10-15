@@ -33,14 +33,45 @@ class WebsiteContentController extends Controller
             ->select('content_type', DB::raw('COUNT(*) as total'))
             ->groupBy('content_type')
             ->pluck('total', 'content_type');
+        $publishedCount = (int) $publishedByType->sum();
+        $draftCount = DB::table('website_content_items')->where('status', 'draft')->count();
 
         return response()->json([
             'data' => [
                 'published_by_type' => $publishedByType,
-                'draft_content' => DB::table('website_content_items')->where('status', 'draft')->count(),
+                'total_content' => DB::table('website_content_items')->count(),
+                'published_content' => $publishedCount,
+                'draft_content' => $draftCount,
                 'published_profiles' => DB::table('website_public_profiles')->where('published', true)->count(),
                 'unpublished_profiles' => DB::table('website_public_profiles')->where('published', false)->count(),
                 'new_contact_messages' => DB::table('website_contact_messages')->where('status', 'new')->count(),
+                'total_people' => DB::table('website_public_profiles')->count(),
+                'unread_messages' => DB::table('website_contact_messages')->where('status', 'new')->count(),
+                'media_count' => DB::table('storage_objects')->where('bucket', 'website-media')->count(),
+                'recent_content' => DB::table('website_content_items')
+                    ->orderByDesc('updated_at')
+                    ->limit(5)
+                    ->get(['id', 'content_type', 'title', 'status', 'updated_at'])
+                    ->map(fn (object $item): array => [
+                        'id' => $item->id,
+                        'type' => $item->content_type,
+                        'title' => $item->title,
+                        'status' => $item->status,
+                        'date' => (string) $item->updated_at,
+                    ])
+                    ->all(),
+                'recent_messages' => DB::table('website_contact_messages')
+                    ->orderByDesc('created_at')
+                    ->limit(5)
+                    ->get(['id', 'name', 'topic', 'status', 'created_at'])
+                    ->map(fn (object $message): array => [
+                        'id' => $message->id,
+                        'name' => $message->name,
+                        'subject' => $message->topic,
+                        'read' => $message->status !== 'new',
+                        'date' => (string) $message->created_at,
+                    ])
+                    ->all(),
                 'upcoming_events' => DB::table('website_content_items')
                     ->where('content_type', 'event')
                     ->where('status', 'published')
@@ -92,13 +123,14 @@ class WebsiteContentController extends Controller
     public function adminIndex(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'content_type' => ['required', 'string', Rule::in(self::TYPES)],
+            'content_type' => ['nullable', 'string', Rule::in(self::TYPES)],
             'search' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $perPage = $validated['content_type'] === 'gallery' ? 200 : 100;
+        $contentType = $validated['content_type'] ?? null;
+        $perPage = $contentType === 'gallery' ? 200 : 100;
         $items = DB::table('website_content_items')
-            ->where('content_type', $validated['content_type'])
+            ->when($contentType, fn ($query) => $query->where('content_type', $contentType))
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')))
             ->when($request->filled('search'), function ($query) use ($validated) {
                 $needle = '%'.addcslashes(trim($validated['search']), '\\%_').'%';

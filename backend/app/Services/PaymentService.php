@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\HttpException;
+use App\Exceptions\CoopBankException;
 use App\Models\CoopTransferRequest;
 use App\Models\CoopTransferResponse;
 use App\Models\Contribution;
@@ -86,6 +87,9 @@ class PaymentService
                     $contribution->save();
                 } else {
                     $existing->stk_checkout_request_id = $checkoutRequestId;
+                    if (in_array((string) $existing->status, ['failed', 'cancelled', 'reversed'], true)) {
+                        $existing->status = 'pending';
+                    }
                     if ((float) $existing->amount <= 0) {
                         $existing->amount = $amount;
                     }
@@ -143,14 +147,32 @@ class PaymentService
             'internal_reference' => $internalRef,
         ]);
 
-        $stkResult = $this->stkService->initiateStkPush([
-            'member_id' => $memberId,
-            'amount' => $amount,
-            'phone' => $phone,
-            'narration' => $bankNarration,
-            'internal_reference' => $internalRef,
-            'payment_type' => $paymentType,
-        ]);
+        try {
+            $stkResult = $this->stkService->initiateStkPush([
+                'member_id' => $memberId,
+                'amount' => $amount,
+                'phone' => $phone,
+                'narration' => $bankNarration,
+                'internal_reference' => $internalRef,
+                'payment_type' => $paymentType,
+            ]);
+        } catch (CoopBankException $exception) {
+            if ($canonicalPending && ! empty($canonicalPending['payment_id'])) {
+                $this->paymentEngine->updateProviderStatus(
+                    (string) $canonicalPending['payment_id'],
+                    'failed',
+                    $exception->getMessage(),
+                );
+                $failedPayment = DB::table('payments')
+                    ->where('id', $canonicalPending['payment_id'])
+                    ->first();
+                if ($failedPayment) {
+                    $this->syncLegacyStkStatus($failedPayment, 'failed');
+                }
+            }
+
+            throw $exception;
+        }
 
         if ($canonicalPending && ! empty($stkResult['message_reference'])) {
             $this->paymentEngine->updateProviderReference(
@@ -319,7 +341,26 @@ class PaymentService
             }
 
             $providerReference = (string) ($canonical->provider_reference ?: $canonical->internal_reference);
-            $providerStatus = $this->accountService->queryStkStatus($providerReference);
+            try {
+                $providerStatus = $this->accountService->queryStkStatus($providerReference);
+            } catch (CoopBankException $exception) {
+                Log::warning('Payment status provider lookup failed.', [
+                    'payment_id' => $canonical->id,
+                    'provider_reference' => $providerReference,
+                    'error' => $exception->getMessage(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'status' => 'pending',
+                    'payment_id' => $canonical->id,
+                    'amount' => (float) ($canonical->amount ?? 0),
+                    'final' => false,
+                    'internal_reference' => $canonical->internal_reference,
+                    'provider_reference' => $canonical->provider_reference,
+                    'message' => 'Payment confirmation is temporarily unavailable. We will check again.',
+                ];
+            }
             $normalizedStatus = (string) ($providerStatus['status'] ?? 'unknown');
             if ($canonical->status === 'pending' && $normalizedStatus === 'unknown') {
                 $normalizedStatus = 'pending';
@@ -627,6 +668,7 @@ class PaymentService
             'donation' => 'donation_payment_records',
             'operational' => 'operational_payment_records',
             'penalty' => 'penalty_payment_records',
+            'monthly_contribution' => 'contributions',
             default => null,
         };
 
@@ -634,8 +676,9 @@ class PaymentService
             return;
         }
 
+        $referenceColumn = $table === 'contributions' ? 'stk_checkout_request_id' : 'mpesa_transaction_id';
         DB::table($table)
-            ->where('mpesa_transaction_id', $payment->internal_reference)
+            ->where($referenceColumn, $payment->internal_reference)
             ->whereIn('status', ['pending', 'processing'])
             ->update([
                 'status' => 'failed',

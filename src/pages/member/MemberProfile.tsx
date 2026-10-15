@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { User, Mail, Phone, MapPin, Building2, Save, CheckCircle, Camera, Lock, AlertCircle, Key } from 'lucide-react';
 import { mockMember } from '@/api/mock';
+import { memberApi } from '@/api/member';
 import { queryKeys } from '@/lib/query';
 import {
   Card, Button, Input, PageHeader, Avatar, LoadingState, ErrorState,
@@ -29,7 +30,7 @@ export default function MemberProfile() {
   const [photoError, setPhotoError] = useState('');
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ new_password: '', confirm_password: '' });
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
@@ -60,10 +61,10 @@ export default function MemberProfile() {
   });
 
   const passwordMut = useMutation({
-    mutationFn: (data: { new_password: string }) => mockMember.changePassword(data),
+    mutationFn: (data: { current_password: string; new_password: string }) => memberApi.changePassword(data),
     onSuccess: () => {
       setPasswordSuccess(true);
-      setPasswordForm({ new_password: '', confirm_password: '' });
+      setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
       setShowPasswordForm(false);
       setTimeout(() => setPasswordSuccess(false), 3000);
     },
@@ -97,7 +98,14 @@ export default function MemberProfile() {
       setPasswordError('Passwords do not match.');
       return;
     }
-    passwordMut.mutate({ new_password: passwordForm.new_password });
+    if (!passwordForm.current_password) {
+      setPasswordError('Enter your current password.');
+      return;
+    }
+    passwordMut.mutate({
+      current_password: passwordForm.current_password,
+      new_password: passwordForm.new_password,
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -218,6 +226,7 @@ export default function MemberProfile() {
                 <span>{passwordError}</span>
               </div>
             )}
+            <Input label="Current Password" type="password" value={passwordForm.current_password} onChange={e => setPasswordForm({ ...passwordForm, current_password: e.target.value })} required />
             <Input label="New Password" type="password" value={passwordForm.new_password} onChange={e => setPasswordForm({ ...passwordForm, new_password: e.target.value })} required />
             <Input label="Confirm Password" type="password" value={passwordForm.confirm_password} onChange={e => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })} required />
             <p className="text-xs text-neutral-400">Password must be at least 6 characters.</p>
@@ -225,7 +234,7 @@ export default function MemberProfile() {
               <Button type="submit" disabled={passwordMut.isPending}>
                 {passwordMut.isPending ? 'Updating...' : 'Update Password'}
               </Button>
-              <Button variant="secondary" type="button" onClick={() => { setShowPasswordForm(false); setPasswordForm({ new_password: '', confirm_password: '' }); setPasswordError(''); }}>
+              <Button variant="secondary" type="button" onClick={() => { setShowPasswordForm(false); setPasswordForm({ current_password: '', new_password: '', confirm_password: '' }); setPasswordError(''); }}>
                 Cancel
               </Button>
             </div>

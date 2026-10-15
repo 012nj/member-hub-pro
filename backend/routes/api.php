@@ -62,6 +62,8 @@ Route::prefix('/auth')->group(function () {
     Route::post('/refresh', [AuthController::class, 'token'])->middleware('throttle:login');
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth.jwt', 'throttle:api');
     Route::post('/force-password-change', [AuthController::class, 'forcePasswordChange'])->middleware('auth.jwt', 'throttle:api');
+    Route::get('/dashboard-pin/status', [AuthController::class, 'dashboardPinStatus'])->middleware('auth.jwt', 'throttle:api');
+    Route::post('/dashboard-pin/verify', [AuthController::class, 'verifyDashboardPin'])->middleware('auth.jwt', 'throttle:login');
 });
 
 Route::get('/admin/password-management/users', [AuthController::class, 'passwordManagementUsers'])
@@ -168,6 +170,9 @@ Route::prefix('/payments')->group(function () {
 Route::prefix('/notifications')->middleware(['auth.jwt', 'view.as.member', 'throttle:api'])->group(function () {
     Route::post('/bulk-sms', [NotificationController::class, 'bulkSms']);
     Route::post('/push', [NotificationController::class, 'push']);
+    Route::post('/device/register', [NotificationController::class, 'registerDevice']);
+    Route::get('/devices', [NotificationController::class, 'listDevices']);
+    Route::delete('/device/{token}', [NotificationController::class, 'removeDevice']);
     Route::get('/events/unseen-count', [NotificationController::class, 'unseenEventCount']);
     Route::get('/unread-count', [NotificationController::class, 'unreadNotificationCount']);
     Route::get('/news/unread-count', [NotificationController::class, 'unreadNewsCount']);

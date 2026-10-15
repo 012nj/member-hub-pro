@@ -4,7 +4,8 @@
   "target_host": "169.58.129.32",
   "target_port": 6622,
   "target_user": "kirinyag",
-  "target_app_path": "/home/kirinyag/public_html/app1.kirinyagahealthcareworkerswelfare.co.ke/khwwc",
+  "target_domain": "app.kirinyagahealthcareworkerswelfare.co.ke",
+  "target_app_path": "/home/kirinyag/public_html/app.kirinyagahealthcareworkerswelfare.co.ke/khwwc",
   
   "issues_fixed": {
     "1_online_users": {

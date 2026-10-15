@@ -8,6 +8,7 @@ use App\Services\JwtService;
 use App\Services\PaymentLifecycleService;
 use App\Services\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -348,6 +349,45 @@ class PaymentLifecycleTest extends TestCase
 
         $this->assertTrue($result['success']);
         $this->assertEquals(1, $result['months_fully_paid']);
+    }
+
+    public function test_successful_payment_types_bump_dashboard_cache_after_commit_once(): void
+    {
+        $memberId = $this->createMember();
+        $this->seedWelfareSettings(300);
+        $lifecycle = app(PaymentLifecycleService::class);
+        Cache::put('khwwc:data_version', 40);
+
+        $first = $lifecycle->postPayment('monthly_contribution', $memberId, 300, 'RECEIPT-MC-CACHE');
+
+        $this->assertFalse($first['idempotent']);
+        $this->assertSame(41, (int) Cache::get('khwwc:data_version'));
+
+        $duplicate = $lifecycle->postPayment('monthly_contribution', $memberId, 300, 'RECEIPT-MC-CACHE');
+
+        $this->assertTrue($duplicate['idempotent']);
+        $this->assertSame(41, (int) Cache::get('khwwc:data_version'));
+        $this->assertSame(1, DB::table('payments')->where('internal_reference', 'RECEIPT-MC-CACHE')->count());
+
+        $beforeDonation = (int) Cache::get('khwwc:data_version');
+        $donation = $lifecycle->postPayment('donation', $memberId, 50, 'RECEIPT-DON-CACHE');
+        $afterDonation = (int) Cache::get('khwwc:data_version');
+        $this->assertGreaterThan($beforeDonation, $afterDonation);
+        $this->assertFalse($donation['idempotent']);
+
+        $duplicateDonation = $lifecycle->postPayment('donation', $memberId, 50, 'RECEIPT-DON-CACHE');
+        $this->assertTrue($duplicateDonation['idempotent']);
+        $this->assertSame($afterDonation, (int) Cache::get('khwwc:data_version'));
+
+        $beforePenalty = (int) Cache::get('khwwc:data_version');
+        $penalty = $lifecycle->postPayment('penalty', $memberId, 100, 'RECEIPT-PEN-CACHE');
+        $afterPenalty = (int) Cache::get('khwwc:data_version');
+        $this->assertGreaterThan($beforePenalty, $afterPenalty);
+        $this->assertFalse($penalty['idempotent']);
+
+        $duplicatePenalty = $lifecycle->postPayment('penalty', $memberId, 100, 'RECEIPT-PEN-CACHE');
+        $this->assertTrue($duplicatePenalty['idempotent']);
+        $this->assertSame($afterPenalty, (int) Cache::get('khwwc:data_version'));
     }
 
     public function test_monthly_contribution_600_via_lifecycle(): void

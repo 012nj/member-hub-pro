@@ -36,7 +36,7 @@ This checklist is preparation only. It does not authorize deployment, migration,
 | Contribution page | BLOCKED | Requires complete frontend consumer audit/build. |
 | Transaction page | BLOCKED | Requires complete frontend consumer audit/build. |
 | Bank monitoring | PASS | Targeted reconciliation/bank monitoring tests pass; production-data verification remains required. |
-| STK monitoring | PASS | Pending/status polling path is tested; callback is non-financial. |
+| STK monitoring | PASS | Pending/status polling path is tested; callback is non-financial. Successful non-duplicate lifecycle posting bumps the shared dashboard-cache version after commit, including query-builder contribution writes; duplicate polls do not bump it again. |
 | Reports | PASS | Admin/Super Admin targeted reports use FinancialReadModel for contribution totals. |
 
 ## Operations

@@ -7,9 +7,9 @@ return [
         'base_url' => env('ABANCOOL_BASE_URL', 'https://api.abancool.tech/api/v1'),
     ],
     'talksasa' => [
-        'api_key' => env('TALKSASA_API_KEY'),
-        'sender_id' => env('TALKSASA_SENDER_ID', 'KHCWWELFARE'),
-        'base_url' => env('TALKSASA_BASE_URL', 'https://bulksms.talksasa.com/api/v3'),
+        'api_key' => env('TALKSASA_API_KEY', env('SMS_API_KEY')),
+        'sender_id' => env('TALKSASA_SENDER_ID', env('SMS_FROM', 'KHCWWELFARE')),
+        'base_url' => env('TALKSASA_BASE_URL', env('SMS_API_URL', 'https://bulksms.talksasa.com/api/v3')),
     ],
     'openrouter' => [
         'api_key' => env('OPENROUTER_API_KEY'),
@@ -17,6 +17,6 @@ return [
         'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
     ],
     'sms' => [
-        'provider' => env('SMS_PROVIDER', 'abancool'),
+        'provider' => env('SMS_PROVIDER', env('SMS_GATEWAY', 'abancool')),
     ],
 ];

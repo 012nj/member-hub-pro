@@ -14,9 +14,9 @@ class MinuteTemplateController extends Controller
 {
     private const ROLES = ['secretary', 'vice_secretary', 'vice-secretary', 'chairperson', 'admin', 'super_admin'];
 
-    private function identity(Request $request): array
+    protected function identity(?Request $request = null): array
     {
-        $identity = $request->attributes->get('identity');
+        $identity = ($request ?? request())->attributes->get('identity');
         if (! is_array($identity) || empty($identity['user_id'])) {
             throw new HttpException(401, 'invalid_token', 'Authentication required.');
         }

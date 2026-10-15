@@ -3,7 +3,11 @@
 namespace Tests\Feature\Payments;
 
 use App\Support\Uuid;
+use App\Exceptions\CoopBankException;
+use App\Services\CoopBank\CoopBankAccountService;
+use App\Services\CoopBank\CoopBankTransactionService;
 use Illuminate\Support\Facades\DB;
+use Mockery;
 use Tests\TestCase;
 
 class PaymentTest extends TestCase
@@ -65,6 +69,35 @@ class PaymentTest extends TestCase
         return DB::table('members')->orderByDesc('id')->value('id');
     }
 
+    private function createDashboardMember(): string
+    {
+        $memberId = Uuid::v4();
+        $email = $this->uniqueEmail();
+        $phone = $this->uniquePhone();
+        DB::table('auth_users')->insert([
+            'id' => $memberId,
+            'email' => $email,
+            'phone' => $phone,
+            'encrypted_password' => password_hash('password', PASSWORD_BCRYPT),
+            'is_banned' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('members')->insert([
+            'id' => $memberId,
+            'user_id' => $memberId,
+            'name' => 'Dashboard Contract Member',
+            'phone' => $phone,
+            'member_id' => 'DASH'.substr($memberId, 0, 8),
+            'is_active' => 1,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $memberId;
+    }
+
     public function test_stk_push_creates_pending_payment_record(): void
     {
         $headers = $this->authHeader();
@@ -98,6 +131,38 @@ class PaymentTest extends TestCase
         ]);
 
         $response->assertStatus(401);
+    }
+
+    public function test_immediate_stk_rejection_marks_canonical_and_monthly_records_failed(): void
+    {
+        $headers = $this->authHeader();
+        $memberId = $this->memberIdForLatestPhone();
+        $bank = Mockery::mock(CoopBankTransactionService::class);
+        $bank->shouldReceive('initiateStkPush')
+            ->once()
+            ->andThrow(new CoopBankException('Bank rejected the STK request', 'stk_error', '4001'));
+        $this->app->instance(CoopBankTransactionService::class, $bank);
+
+        $response = $this->postJson('/api/payments/stk-push', [
+            'member_id' => $memberId,
+            'amount' => 300,
+            'phone' => '254712345678',
+            'paymentType' => 'monthly_contribution',
+        ], $headers);
+
+        $response->assertStatus(422)->assertJson([
+            'success' => false,
+            'message' => 'Bank rejected the STK request',
+        ]);
+        $this->assertDatabaseHas('payments', [
+            'member_id' => $memberId,
+            'payment_type' => 'monthly_contribution',
+            'status' => 'failed',
+        ]);
+        $this->assertDatabaseHas('contributions', [
+            'member_id' => $memberId,
+            'status' => 'failed',
+        ]);
     }
 
     public function test_legacy_stk_callback_is_a_noop_for_pending_canonical_payment(): void
@@ -208,6 +273,116 @@ class PaymentTest extends TestCase
         $statusResponse->assertStatus(200)
             ->assertJsonStructure(['status', 'amount'])
             ->assertJson(['status' => 'pending']);
+    }
+
+    public function test_temporary_bank_status_error_returns_retryable_pending_status(): void
+    {
+        $headers = $this->authHeader();
+        $memberId = $this->memberIdForLatestPhone();
+        $pushResponse = $this->postJson('/api/payments/stk-push', [
+            'member_id' => $memberId,
+            'amount' => 150,
+            'phone' => '254712345678',
+            'paymentType' => 'penalty',
+        ], $headers);
+        $checkoutId = $pushResponse->json('checkoutRequestId');
+
+        $accountService = Mockery::mock(CoopBankAccountService::class);
+        $accountService->shouldReceive('queryStkStatus')
+            ->once()
+            ->andThrow(new CoopBankException('Bank enquiry temporarily unavailable', 'connection_error'));
+        $this->app->instance(CoopBankAccountService::class, $accountService);
+
+        $this->getJson("/api/payments/status/{$checkoutId}", $headers)
+            ->assertOk()
+            ->assertJson([
+                'success' => false,
+                'status' => 'pending',
+                'final' => false,
+            ]);
+    }
+
+    public function test_treasurer_dashboard_exposes_all_displayed_balance_metrics(): void
+    {
+        $headers = $this->authHeader('treasurer');
+
+        $this->getJson('/api/treasurer/dashboard', $headers)
+            ->assertOk()
+            ->assertJsonStructure([
+                'operational_balance',
+                'contributions_balance',
+                'penalty_balance',
+                'donation_balance',
+                'book_balance',
+                'bank_balance',
+                'reconciliation_diff',
+                'pending_withdrawals',
+                'pending_expenses',
+                'monthly_contributions',
+            ]);
+    }
+
+    public function test_treasurer_contributions_are_returned_in_dashboard_display_shape(): void
+    {
+        $headers = $this->authHeader('treasurer');
+        $memberId = $this->createDashboardMember();
+        $contributionId = Uuid::v4();
+        DB::table('contributions')->insert([
+            'id' => $contributionId,
+            'member_id' => $memberId,
+            'amount' => 300,
+            'month' => (int) now()->format('n'),
+            'year' => (int) now()->format('Y'),
+            'due_date' => now()->format('Y-m-d'),
+            'paid_date' => now()->format('Y-m-d'),
+            'payment_ref' => 'LOCAL-DASHBOARD-CONTRIBUTION',
+            'status' => 'paid',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson('/api/treasurer/contributions?page=1', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $contributionId)
+            ->assertJsonPath('data.0.member_name', 'Dashboard Contract Member')
+            ->assertJsonPath('data.0.type', 'monthly')
+            ->assertJsonPath('data.0.status', 'confirmed')
+            ->assertJsonPath('data.0.method', 'mpesa')
+            ->assertJsonPath('data.0.reference', 'LOCAL-DASHBOARD-CONTRIBUTION')
+            ->assertJsonPath('data.0.period', now()->format('Y-m'));
+    }
+
+    public function test_treasurer_bank_statement_includes_dashboard_display_fields(): void
+    {
+        $headers = $this->authHeader('treasurer');
+        $memberId = $this->createDashboardMember();
+        $reference = 'LOCAL-DASHBOARD-BANK-'.Uuid::v4();
+        DB::table('bank_transactions')->insert([
+            'id' => Uuid::v4(),
+            'bank_name' => 'coop',
+            'member_id' => $memberId,
+            'phone' => '+254712345678',
+            'amount' => 450,
+            'transaction_date' => now()->format('Y-m-d'),
+            'month' => (int) now()->format('n'),
+            'year' => (int) now()->format('Y'),
+            'transaction_reference' => $reference,
+            'bank_transaction_reference' => $reference,
+            'transaction_type' => 'credit',
+            'credit_amount' => 450,
+            'debit_amount' => 0,
+            'narration' => 'Test bank contribution',
+            'reconciliation_status' => 'matched',
+            'created_at' => now(),
+        ]);
+
+        $this->getJson('/api/treasurer/bank-statement?page=1', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.0.reference', $reference)
+            ->assertJsonPath('data.0.description', 'Test bank contribution')
+            ->assertJsonPath('data.0.amount', 450)
+            ->assertJsonPath('data.0.type', 'credit')
+            ->assertJsonPath('data.0.matched', true);
     }
 
     public function test_bank_sync_requires_staff(): void

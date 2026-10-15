@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\HttpException;
+use App\Services\FinancialReadModel;
 use App\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,10 @@ use Illuminate\Support\Facades\DB;
  */
 class MemberPortalController extends PortalController
 {
-    public function __construct(private readonly PaymentService $payments) {}
+    public function __construct(
+        private readonly PaymentService $payments,
+        private readonly FinancialReadModel $financialReadModel,
+    ) {}
 
     public function dashboard(Request $request): JsonResponse
     {
@@ -24,9 +28,9 @@ class MemberPortalController extends PortalController
 
         $data = $this->cached("member:dash:{$memberId}", function () use ($memberId, $userId) {
             $member = DB::table('members')->where('id', $memberId)->first();
+            $financial = $this->financialReadModel->memberOverview($memberId);
             $contrib = DB::table('contributions')->where('member_id', $memberId)->where('status', 'paid')
-                ->selectRaw('COALESCE(SUM(amount),0) as total, COUNT(*) as cnt')->first();
-            $penalties = (float) DB::table('penalties')->where('member_id', $memberId)->where('is_paid', 0)->sum('amount');
+                ->count();
             $donations = (float) DB::table('donation_payment_records')->where('member_id', $memberId)
                 ->whereIn('status', ['verified', 'completed', 'paid', 'confirmed'])->sum('amount');
 
@@ -37,12 +41,11 @@ class MemberPortalController extends PortalController
                 'monthly_rate' => $rate,
                 'grace_days' => (int) ($settings->penalty_grace_days ?? 30),
                 'penalty_rate' => (float) ($settings->penalty_amount ?? 50),
-                'months_covered' => $rate > 0 ? (int) floor(((float) $contrib->total) / $rate) : 0,
-                'contributions_total' => (float) $contrib->total,
-                'contributions_count' => (int) $contrib->cnt,
-                'penalties_total' => $penalties,
+                'months_covered' => (int) ($financial['paid_months'] ?? 0),
+                'contributions_total' => ((int) ($financial['cash_received_minor'] ?? 0)) / 100,
+                'contributions_count' => $contrib,
+                'penalties_total' => ((int) ($financial['penalties_outstanding_minor'] ?? 0)) / 100,
                 'donations_total' => $donations,
-                'wallet_balance' => (float) $contrib->total,
                 'upcoming_events' => DB::table('events')->where('status', '!=', 'cancelled')
                     ->where(fn ($q) => $q->whereNull('scheduled_date')->orWhere('scheduled_date', '>=', now()->toDateString()))
                     ->orderBy('scheduled_date')->limit(5)->get()->map(fn ($e) => $this->mapEvent($e))->all(),
@@ -52,7 +55,7 @@ class MemberPortalController extends PortalController
                 'unread_notifications' => DB::table('notifications')->where('user_id', $userId)->where('is_read', 0)->count(),
                 'status' => (string) ($member->status ?? ($member && $member->is_active ? 'active' : 'inactive')),
             ];
-        }, 20);
+        }, 5);
 
         return response()->json($data);
     }

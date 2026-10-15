@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\HttpException;
+use App\Models\DashboardSecurity;
+use App\Services\JwtService;
 use App\Services\AuthService;
 use App\Support\Uuid;
 use Illuminate\Http\JsonResponse;
@@ -147,13 +149,90 @@ class AuthController extends Controller
             throw new HttpException(403, 'invalid_password', 'Current password is incorrect.');
         }
 
-        $pinHash = hash('sha256', $identity['user_id'].':'.$pin);
-        DB::table('dashboard_security')->updateOrInsert(
-            ['user_id' => $identity['user_id']],
-            ['pin_hash' => $pinHash, 'updated_at' => now()]
-        );
+        $this->storeDashboardPin($identity['user_id'], $pin);
 
         return response()->json(['message' => 'Dashboard PIN reset successfully.']);
+    }
+
+    public function dashboardPinStatus(Request $request): JsonResponse
+    {
+        $identity = $request->attributes->get('identity');
+        $required = AuthService::requiresDashboardPin($identity['roles'] ?? []);
+
+        return response()->json([
+            'required' => $required,
+            'configured' => $required && DB::table('dashboard_security')
+                ->where('user_id', $identity['user_id'])
+                ->whereNotNull('pin_hash')
+                ->exists(),
+            'verified' => ! $required || (bool) ($identity['pin_verified'] ?? false),
+        ]);
+    }
+
+    public function verifyDashboardPin(Request $request): JsonResponse
+    {
+        $identity = $request->attributes->get('identity');
+        if (! AuthService::requiresDashboardPin($identity['roles'] ?? [])) {
+            throw new HttpException(403, 'pin_not_required', 'A dashboard PIN is not required for this account.');
+        }
+
+        $pin = (string) $request->input('pin', '');
+        if (! preg_match('/^\d{4}$/', $pin)) {
+            throw new HttpException(422, 'invalid_pin', 'Enter a 4-digit PIN.');
+        }
+
+        $security = DB::table('dashboard_security')
+            ->where('user_id', $identity['user_id'])
+            ->first();
+
+        if (! $security || empty($security->pin_hash)) {
+            $confirmation = (string) $request->input('pin_confirmation', '');
+            if (! hash_equals($pin, $confirmation)) {
+                throw new HttpException(422, 'pin_confirmation_mismatch', 'The PIN entries do not match.');
+            }
+
+            $this->storeDashboardPin($identity['user_id'], $pin);
+        } elseif (! $this->verifyPinHash($pin, (string) $security->pin_hash, $identity['user_id'])) {
+            throw new HttpException(401, 'invalid_pin', 'The PIN is incorrect.');
+        }
+
+        $user = DB::table('auth_users')->where('id', $identity['user_id'])->first();
+        if (! $user) {
+            throw new HttpException(401, 'invalid_token', 'Account no longer exists.');
+        }
+
+        $accessToken = JwtService::encode(array_merge(
+            JwtService::buildPayload(
+                $identity['user_id'],
+                $identity['email'],
+                $identity['roles'],
+                null,
+                ! empty($user->must_change_password)
+            ),
+            ['pin_verified' => true]
+        ));
+
+        return response()->json(['access_token' => $accessToken, 'verified' => true]);
+    }
+
+    private function verifyPinHash(string $pin, string $storedHash, string $userId): bool
+    {
+        if (password_verify($pin, $storedHash)) {
+            return true;
+        }
+
+        return hash_equals(hash('sha256', $userId.':'.$pin), $storedHash);
+    }
+
+    private function storeDashboardPin(string $userId, string $pin): void
+    {
+        $security = DashboardSecurity::firstOrNew(['user_id' => $userId]);
+        if (! $security->exists) {
+            $security->id = Uuid::v4();
+        }
+        $security->pin_hash = password_hash($pin, PASSWORD_DEFAULT);
+        $security->updated_at = now();
+        $security->save();
     }
 
     private function recordLoginActivity(object $user, Request $request, bool $success, array $roles = []): void

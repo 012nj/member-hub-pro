@@ -58,7 +58,8 @@ class TreasurerPortalController extends PortalController
     {
         $this->requireAnyRole($request, self::ROLES);
         $q = DB::table('contributions as c')->leftJoin('members as m', 'm.id', '=', 'c.member_id')
-            ->select('c.*', 'm.name as member_name')->orderByDesc('c.year')->orderByDesc('c.month');
+            ->select('c.*', 'm.name as member_name', 'm.member_id as member_number')
+            ->orderByDesc('c.paid_date')->orderByDesc('c.created_at');
         if ($s = $request->query('status')) {
             $q->where('c.status', $s === 'confirmed' ? 'paid' : $s);
         }
@@ -69,7 +70,21 @@ class TreasurerPortalController extends PortalController
             $q->where('c.paid_date', '<=', $t);
         }
 
-        return response()->json($this->paginate($q, $request));
+        $page = $this->paginate($q, $request);
+        $page['data'] = array_map(fn ($contribution) => array_merge((array) $contribution, [
+            'type' => 'monthly',
+            'status' => match ((string) $contribution->status) {
+                'paid' => 'confirmed',
+                'failed' => 'failed',
+                default => 'pending',
+            },
+            'method' => $contribution->payment_ref ? 'mpesa' : 'manual',
+            'reference' => $contribution->payment_ref,
+            'period' => sprintf('%04d-%02d', $contribution->year, $contribution->month),
+            'date' => (string) ($contribution->paid_date ?? $contribution->due_date ?? $contribution->created_at),
+        ]), $page['data']);
+
+        return response()->json($page);
     }
 
     public function adjustContribution(Request $request, string $id): JsonResponse
@@ -288,8 +303,34 @@ class TreasurerPortalController extends PortalController
         $this->requireAnyRole($request, self::ROLES);
         $q = DB::table('bank_transactions as b')->leftJoin('members as m', 'm.id', '=', 'b.member_id')
             ->select('b.*', 'm.name as member_name')->orderByDesc('b.transaction_date')->orderByDesc('b.created_at');
+        if ($request->query('status') === 'matched') {
+            $q->whereIn('b.reconciliation_status', ['matched', 'reconciled']);
+        } elseif ($request->query('status') === 'unmatched') {
+            $q->where(function ($query): void {
+                $query->whereNull('b.reconciliation_status')
+                    ->orWhereNotIn('b.reconciliation_status', ['matched', 'reconciled']);
+            });
+        }
+        $page = $this->paginate($q, $request, 50);
+        $page['data'] = array_map(function ($transaction): array {
+            $credit = (float) ($transaction->credit_amount ?? 0);
+            $debit = (float) ($transaction->debit_amount ?? 0);
+            $direction = strtolower((string) ($transaction->transaction_type ?? ''));
+            if (! in_array($direction, ['credit', 'debit'], true)) {
+                $direction = $credit > 0 ? 'credit' : 'debit';
+            }
 
-        return response()->json($this->paginate($q, $request, 50));
+            return array_merge((array) $transaction, [
+                'date' => (string) ($transaction->transaction_date ?? $transaction->created_at),
+                'description' => (string) ($transaction->narration ?: ($transaction->name ?: $transaction->source)),
+                'reference' => (string) ($transaction->bank_transaction_reference ?: ($transaction->transaction_reference ?: $transaction->mpesa_code)),
+                'amount' => $credit > 0 ? $credit : ($debit > 0 ? $debit : (float) $transaction->amount),
+                'type' => $direction,
+                'matched' => in_array((string) $transaction->reconciliation_status, ['matched', 'reconciled'], true),
+            ]);
+        }, $page['data']);
+
+        return response()->json($page);
     }
 
     public function bookBalance(Request $request): JsonResponse

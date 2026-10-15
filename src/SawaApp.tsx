@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from '@/lib/router-compat';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { queryClient } from '@/lib/query';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { RequireAuth, getHomePath } from '@/auth/RouteGuard';
+import { enableWebPushNotifications } from '@/lib/firebase-push';
 import { AppLayout } from '@/layouts/AppLayout';
 import { SiteLayout } from '@/pages/site/SiteLayout';
 import SiteHome from '@/pages/site/SiteHome';
@@ -41,6 +43,7 @@ import WithdrawalApprovals from '@/pages/treasurer/WithdrawalApprovals';
 import TreasurerDocuments from '@/pages/treasurer/TreasurerDocuments';
 import TreasurerReports from '@/pages/treasurer/TreasurerReports';
 import BankSync from '@/pages/treasurer/BankSync';
+import CoopAccountPage from '@/pages/treasurer/CoopAccountPage';
 import DonationCampaigns from '@/pages/treasurer/DonationCampaigns';
 import MemoHistory from '@/pages/treasurer/MemoHistory';
 import CreateMemo from '@/pages/treasurer/CreateMemo';
@@ -98,11 +101,23 @@ function RootRedirect() {
   return <Navigate to="/login" replace />;
 }
 
+function PushNotificationBootstrap() {
+  const { user, demoMode } = useAuth();
+
+  useEffect(() => {
+    if (!user || demoMode) return;
+    void enableWebPushNotifications();
+  }, [user, demoMode]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
+          <PushNotificationBootstrap />
           <Routes>
             {/* Public website */}
             <Route element={<SiteLayout />}>
@@ -164,6 +179,7 @@ export default function App() {
               <Route path="/treasurer/documents" element={<TreasurerDocuments />} />
               <Route path="/treasurer/reports" element={<TreasurerReports />} />
               <Route path="/treasurer/bank-sync" element={<BankSync />} />
+              <Route path="/treasurer/coop-account" element={<CoopAccountPage />} />
               <Route path="/treasurer/bank-statement" element={<BankStatementPage />} />
               <Route path="/treasurer/bank-statement-import" element={<BankStatementImportPage />} />
               <Route path="/treasurer/import-history" element={<ImportHistoryPage />} />
@@ -244,6 +260,14 @@ export default function App() {
               <Route path="/chairperson/approve-minutes" element={<ApproveMinutes />} />
               <Route path="/chairperson/signature" element={<ChairpersonSignatureUpload />} />
               <Route path="/chairperson/withdrawal-approvals" element={<ChairpersonWithdrawalApprovals />} />
+            </Route>
+
+            {/* Executive read-only dashboards */}
+            <Route element={<RequireAuth roles={['vice-chairperson']}><AppLayout /></RequireAuth>}>
+              <Route path="/vice-chairperson" element={<ExecutiveDashboard />} />
+            </Route>
+            <Route element={<RequireAuth roles={['patron']}><AppLayout /></RequireAuth>}>
+              <Route path="/patron" element={<ExecutiveDashboard />} />
             </Route>
 
             {/* Office */}

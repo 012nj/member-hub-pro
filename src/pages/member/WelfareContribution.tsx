@@ -35,6 +35,20 @@ export default function WelfareContribution() {
       <Button disabled={!amount || amount < 1} onClick={() => setOpen(true)}><CreditCard size={16} />Pay {amount ? formatCurrency(amount) : ''}</Button>
     </Card>
     {success && <p role="status">Payment received. Your contributions will update shortly.</p>}
-    <PaymentModal open={open} onClose={() => setOpen(false)} amount={amount} accountRef="CONTRIBUTION-member" paymentType="monthly_contribution" transactionDesc={`Monthly contribution${months ? ` (${months} ${months === 1 ? 'month' : 'months'})` : ''}`} bankDetails={{ account: 'KHWWC Welfare', accountNo: '0123 4567 8901', paybill: '522522', reference: 'CONTRIBUTION' }} onSuccess={() => { queryClient.invalidateQueries({ queryKey: queryKeys.memberDashboard }); setOpen(false); setSuccess(true); }} />
+    <PaymentModal
+      open={open}
+      onClose={() => setOpen(false)}
+      amount={amount}
+      accountRef="CONTRIBUTION-member"
+      paymentType="monthly_contribution"
+      transactionDesc={`Monthly contribution${months ? ` (${months} ${months === 1 ? 'month' : 'months'})` : ''}`}
+      bankDetails={{ account: 'KHWWC Welfare', accountNo: '0123 4567 8901', paybill: '522522', reference: 'CONTRIBUTION' }}
+      onSuccess={() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.memberDashboard });
+        queryClient.invalidateQueries({ queryKey: queryKeys.memberContributionHistory });
+        setOpen(false);
+        setSuccess(true);
+      }}
+    />
   </div>;
 }

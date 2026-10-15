@@ -113,7 +113,7 @@ const ENDPOINTS: Endpoint[] = [
   { id: '3.26', method: 'DELETE', path: '/documents/{id}', module: 'documents', role: '👤', auth: 'authenticated', body: '?hard_delete=0', response: 'void' },
   { id: '3.27', method: 'POST', path: '/storage/v1/object/profile-images/{userId}/profile.{ext}', module: 'member', role: '👤', auth: 'authenticated', body: 'multipart: file', response: '{ url }', multipart: true },
   { id: '3.28', method: 'POST', path: '/payments/stk-push', module: 'payments', role: '👤', auth: 'authenticated', body: '{ phone, amount, account_ref, member_id?, paymentType, transactionDesc?, penaltyIds?, campaignId? }', response: '{ checkoutRequestId, message }' },
-  { id: '3.29', method: 'GET', path: '/payments/status/{checkoutRequestId}', module: 'payments', role: '👤', auth: 'authenticated', response: '{ status, message? }' },
+  { id: '3.29', method: 'GET', path: '/payments/status/{checkoutRequestId}', module: 'payments', role: '👤', auth: 'authenticated', response: '{ status, message?, final? }' },
 
   // Treasurer
   { id: '4.1', method: 'GET', path: '/treasurer/dashboard', module: 'treasurer', role: '💰', auth: 'authenticated', response: 'TreasurerDashboard' },

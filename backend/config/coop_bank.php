@@ -20,7 +20,7 @@ return [
     'default_user_id' => env('COOP_USER_ID', 'KirinyagaHealthCare'),
     'operator_code' => env('COOP_OPERATOR_CODE', 'KIRINYAGA'),
 
-    'callback_base_url' => env('COOP_CALLBACK_BASE_URL', 'https://app1.kirinyagahealthcareworkerswelfare.co.ke/api/banking/coop/callback'),
+    'callback_base_url' => env('COOP_CALLBACK_BASE_URL', 'https://app.kirinyagahealthcareworkerswelfare.co.ke/api/banking/coop/callback'),
 
     'token_refresh_buffer' => (int) env('COOP_TOKEN_REFRESH_BUFFER', 60),
 

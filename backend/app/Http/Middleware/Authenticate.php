@@ -30,6 +30,14 @@ class Authenticate
             throw new HttpException(401, 'invalid_token', 'Invalid or expired authentication token.');
         }
 
+        if (
+            AuthService::requiresDashboardPin($identity['roles'] ?? [])
+            && ! ($identity['pin_verified'] ?? false)
+            && ! $request->is('api/auth/dashboard-pin/status', 'api/auth/dashboard-pin/verify')
+        ) {
+            throw new HttpException(403, 'pin_required', 'Verify your 4-digit dashboard PIN to continue.');
+        }
+
         $userId = $identity['user_id'] ?? null;
 
         if ($userId) {

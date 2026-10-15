@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from '@/lib/router-compat';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Bell, CalendarCheck, ChevronDown, CreditCard, FileText, HeartHandshake, PiggyBank, ShieldCheck, WalletCards, Calendar, Coins, Users, Download } from 'lucide-react';
+import { ArrowRight, Bell, CalendarCheck, ChevronDown, CreditCard, FileText, HeartHandshake, PiggyBank, ShieldCheck, Calendar, Coins, Users, Download, Pin } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
-import { mockMember } from '@/api/mock';
+import { roleDashboardPath, roleLabels } from '@/auth/AuthContext';
+import { getDashboardPins, saveDashboardPins } from '@/lib/dashboard-pins';
+import { memberApi } from '@/api/member';
 import { queryKeys } from '@/lib/query';
 import { Button, Card, Badge, StatCard, ErrorState, LoadingState } from '@/components/ui';
 import { memberPaymentDestinations } from '@/lib/member-payment-navigation';
@@ -47,13 +49,33 @@ function PaymentMenu() {
 
 export default function MemberDashboard() {
   const { user } = useAuth();
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: queryKeys.memberDashboard, queryFn: () => mockMember.dashboard() });
+  const availableDashboardRoles = (user?.roles ?? (user ? [user.role] : [])).filter((role) => role !== 'member');
+  const [pinnedRoles, setPinnedRoles] = useState(() =>
+    user ? getDashboardPins(user.id, availableDashboardRoles) : [],
+  );
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: queryKeys.memberDashboard,
+    queryFn: () => memberApi.dashboard(),
+    staleTime: 5_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+  useEffect(() => {
+    if (user) setPinnedRoles(getDashboardPins(user.id, availableDashboardRoles));
+  }, [user?.id, availableDashboardRoles.join(',')]);
   if (isLoading) return <LoadingState text="Loading your member dashboard…" />;
   if (isError || !data) return <ErrorState message="We couldn't load your dashboard." onRetry={() => refetch()} />;
   const firstName = user?.name?.replace(/^(Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+/i, '').split(' ')[0] ?? 'Member';
   const outstanding = Math.max(data.penalties_total, 0);
   const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Africa/Nairobi' }).format(new Date()));
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const toggleDashboardPin = (role: (typeof availableDashboardRoles)[number]) => {
+    if (!user) return;
+    const next = pinnedRoles.includes(role)
+      ? pinnedRoles.filter((pinnedRole) => pinnedRole !== role)
+      : [...pinnedRoles, role];
+    setPinnedRoles(saveDashboardPins(user.id, next, availableDashboardRoles));
+  };
 
   return <div className="space-y-7">
     <div className="flex flex-wrap items-center justify-between gap-4">
@@ -78,7 +100,6 @@ export default function MemberDashboard() {
       <div className="grid grid-cols-2 gap-4">
         <StatCard label="Fund drive donations" value={formatCurrency(data.donations_total)} icon={<HeartHandshake size={20} />} color="success" />
         <StatCard label="Outstanding penalties" value={formatCurrency(outstanding)} icon={<ShieldCheck size={20} />} color="warning" />
-        <StatCard label="Wallet balance" value={formatCurrency(data.wallet_balance)} icon={<WalletCards size={20} />} />
         <StatCard label="Unread notifications" value={data.unread_notifications} icon={<Bell size={20} />} color="secondary" />
       </div>
     </div>
@@ -86,6 +107,35 @@ export default function MemberDashboard() {
     {outstanding > 0 && <Link to={memberPaymentDestinations.penalty} className="member-alert card"><ShieldCheck size={20} /><span className="flex-1 text-sm"><strong>{formatCurrency(outstanding)}</strong> in penalties is outstanding{data.grace_days != null ? ` — penalties apply ${data.grace_days} days after a missed month` : ''}.</span><span className="text-sm font-semibold">Pay now</span><ArrowRight size={16} /></Link>}
 
     <section><h2 className="text-base font-bold mb-4">Quick actions</h2><div className="member-shortcuts">{shortcuts.map(({ label, path, icon: Icon }) => <Link to={path} key={label} className="member-shortcut card transition-all"><span><Icon size={24} strokeWidth={1.6} /></span><span className="text-sm font-medium">{label}</span></Link>)}</div></section>
+
+    {availableDashboardRoles.length > 0 && <section>
+      <h2 className="text-base font-bold mb-4">Role dashboards</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {availableDashboardRoles.map((role) => {
+          const pinned = pinnedRoles.includes(role);
+          return <Card key={role} className="p-4 flex items-center justify-between gap-3">
+            <Link to={roleDashboardPath[role]} className="min-w-0">
+              <span className="block text-sm font-semibold">{roleLabels[role]} Dashboard</span>
+              <span className="text-xs text-muted-foreground">Assigned to your account</span>
+            </Link>
+            <button
+              type="button"
+              aria-pressed={pinned}
+              aria-label={`${pinned ? 'Unpin' : 'Pin'} ${roleLabels[role]} dashboard`}
+              onClick={() => toggleDashboardPin(role)}
+              className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium ${pinned ? 'bg-primary-100 text-primary-800' : 'bg-neutral-100 text-neutral-700'}`}
+            >
+              <Pin size={14} />{pinned ? 'Pinned' : 'Pin'}
+            </button>
+          </Card>;
+        })}
+      </div>
+      {pinnedRoles.length > 0 && <div className="mt-3 flex flex-wrap gap-2" aria-label="Pinned role dashboards">
+        {pinnedRoles.map((role) => <Link key={role} to={roleDashboardPath[role]} className="rounded-full bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-800">
+          {roleLabels[role]}
+        </Link>)}
+      </div>}
+    </section>}
 
     <div className="grid lg:grid-cols-5 gap-6">
       <Card className="lg:col-span-3 p-5 sm:p-6"><div className="flex items-center justify-between gap-3 mb-2"><h2 className="font-bold">Recent contributions</h2><Link to="/member/downloads" className="text-primary text-xs">View all →</Link></div>{data.recent_contributions.length ? data.recent_contributions.map(contribution => <div key={contribution.id} className="member-recent-row"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 text-primary-700"><Coins size={19} /></span><div className="flex-1 min-w-0"><p className="text-sm font-semibold">{contribution.period}</p><p className="text-xs text-muted-foreground mt-1">{formatDate(contribution.date)} · {contribution.method}</p></div><div className="text-right"><p className="text-sm font-bold">{formatCurrency(contribution.amount)}</p><span className="text-xs text-muted-foreground">{contribution.status}</span></div></div>) : <p className="py-8 text-sm text-muted-foreground">No recent contributions.</p>}</Card>

@@ -32,12 +32,14 @@ class AuthServiceTest extends TestCase
         $this->assertTrue(AuthService::isStaff(['admin']));
         $this->assertTrue(AuthService::isStaff(['treasurer']));
         $this->assertFalse(AuthService::isStaff(['member']));
-        $this->assertTrue(AuthService::isAdmin(['super_admin']));
+        $this->assertFalse(AuthService::isAdmin(['super_admin']));
+        $this->assertTrue(AuthService::canAccessSuperAdmin(['super_admin']));
+        $this->assertFalse(AuthService::canAccessSuperAdmin(['admin']));
         $this->assertTrue(AuthService::hasRole(['member', 'admin'], 'admin'));
         $this->assertFalse(AuthService::hasRole(['member'], 'admin'));
     }
 
-    public function test_roles_for_super_admin_includes_admin_implicitly(): void
+    public function test_roles_for_super_admin_does_not_include_admin_implicitly(): void
     {
         $userId = \App\Support\Uuid::v4();
 
@@ -63,6 +65,6 @@ class AuthServiceTest extends TestCase
 
         $this->assertIsArray($roles);
         $this->assertContains('super_admin', $roles);
-        $this->assertContains('admin', $roles);
+        $this->assertNotContains('admin', $roles);
     }
 }

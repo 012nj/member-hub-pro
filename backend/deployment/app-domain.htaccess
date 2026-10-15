@@ -1,0 +1,34 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  RewriteRule (^|/)\.env(?:\..*)?$ - [F,L,NC]
+  RewriteRule (^|/)\.git(?:/|$) - [F,L,NC]
+  RewriteRule (^|/)node_modules(?:/|$) - [F,L,NC]
+
+  # The Laravel project is below the document root; expose only its public tree.
+  RewriteRule ^khwwc/(?!public(?:/|$)) - [F,L,NC]
+
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+  RewriteRule ^(api|rest|functions|payments|notifications|wallets|banking|members|admin|admin-panel|super-admin)(/.*)?$ /khwwc/public/index.php/$1$2 [L,QSA]
+  RewriteRule ^storage(/.*)?$ /khwwc/public/storage$1 [L,QSA]
+
+  RewriteCond %{REQUEST_URI} !^/khwwc/ [NC]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME} !-l
+  RewriteRule ^ /index.html [L,QSA]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  <FilesMatch "\.(js|css|woff2|png|jpg|jpeg|svg|webp)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "^(index\.html|sw\.js|manifest\.json|firebase-messaging-sw\.js)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

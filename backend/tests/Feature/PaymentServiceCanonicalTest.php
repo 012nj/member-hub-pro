@@ -65,16 +65,16 @@ class PaymentServiceCanonicalTest extends TestCase
 
         $engine = app(PaymentEngine::class);
         $engine->createPendingPayment($memberId, 'mpesa', $checkoutId, $checkoutId, 30000);
-        $stk = $this->createMock(CoopBankTransactionService::class);
-        $stk->expects($this->once())->method('queryStkStatus')->with($checkoutId)->willReturn([
+        $accountService = $this->createMock(CoopBankAccountService::class);
+        $accountService->expects($this->once())->method('queryStkStatus')->with($checkoutId)->willReturn([
             'status' => 'success',
             'provider_status' => 'SUCCESS',
             'message' => 'Completed',
             'response' => ['Status' => 'SUCCESS'],
         ]);
         $service = new PaymentService(
-            $stk,
-            $this->createMock(CoopBankAccountService::class),
+            $this->createMock(CoopBankTransactionService::class),
+            $accountService,
             $this->createMock(CoopBankTransferService::class),
             $this->createMock(WalletService::class),
             $this->createMock(PaymentLifecycleService::class),

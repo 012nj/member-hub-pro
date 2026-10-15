@@ -116,6 +116,46 @@ class NotificationTest extends TestCase
             ->assertJson(['success' => true]);
     }
 
+    public function test_device_registration_requires_auth(): void
+    {
+        $response = $this->postJson('/api/notifications/device/register', [
+            'token' => 'web-device-token-123',
+            'platform' => 'web',
+        ]);
+
+        $response->assertStatus(401);
+    }
+
+    public function test_device_registration_tracks_devices_per_user(): void
+    {
+        $headers = $this->authHeader($userId);
+
+        $this->postJson('/api/notifications/device/register', [
+            'token' => 'web-device-token-123',
+            'platform' => 'web',
+            'user_agent' => 'Mozilla/5.0',
+        ], $headers)->assertOk();
+
+        $this->assertDatabaseHas('push_tokens', [
+            'user_id' => $userId,
+            'token' => 'web-device-token-123',
+            'platform' => 'web',
+        ]);
+
+        $this->getJson('/api/notifications/devices', $headers)
+            ->assertOk()
+            ->assertJsonPath('devices.0.token', 'web-device-token-123');
+
+        $this->deleteJson('/api/notifications/device/' . urlencode('web-device-token-123'), [], $headers)
+            ->assertOk()
+            ->assertJson(['success' => true, 'deleted' => true]);
+
+        $this->assertDatabaseMissing('push_tokens', [
+            'user_id' => $userId,
+            'token' => 'web-device-token-123',
+        ]);
+    }
+
     public function test_admin_event_notifications_are_idempotent_per_recipient(): void
     {
         $headers = $this->authHeader();

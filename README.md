@@ -22,3 +22,15 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+The frontend uses the same-origin `/api` path by default, which is suitable when
+the frontend and Laravel API are served from the same host. For local development
+with a separately running Laravel server, set `VITE_API_BASE_URL` in a local
+`.env.local` file, for example:
+
+```sh
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+```
+
+Live API mode is the default. Demo mode is opt-in through the app's demo-mode
+setting and should not be enabled for production accounts.

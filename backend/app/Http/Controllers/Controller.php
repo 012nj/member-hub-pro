@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\HttpException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 
 class Controller extends BaseController
@@ -12,9 +13,9 @@ class Controller extends BaseController
     use AuthorizesRequests;
     use ValidatesRequests;
 
-    protected function identity(): array
+    protected function identity(?Request $request = null): array
     {
-        $identity = request()->attributes->get('identity');
+        $identity = ($request ?? request())->attributes->get('identity');
 
         if (!is_array($identity)) {
             throw new HttpException(401, 'invalid_token', 'No identity in request context.');

@@ -136,8 +136,9 @@ class ApiResourceSerializer
      */
     public static function formatTimestamp(string $value): string
     {
-        $dt = \DateTime::createFromFormat('Y-m-d H:i:s.u', $value)
-            ?? \DateTime::createFromFormat('Y-m-d H:i:s', $value);
+        $utc = new \DateTimeZone('UTC');
+        $dt = \DateTime::createFromFormat('!Y-m-d H:i:s.u', $value, $utc)
+            ?? \DateTime::createFromFormat('!Y-m-d H:i:s', $value, $utc);
 
         if ($dt === false) {
             return $value;

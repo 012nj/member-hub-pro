@@ -43,7 +43,11 @@ class WalletService
                     ->first();
 
                 if ($existingTransaction) {
-                    return ['wallet' => $record->refresh(), 'transaction' => $existingTransaction];
+                    return [
+                        'wallet' => $record->refresh(),
+                        'transaction' => $existingTransaction,
+                        'idempotent' => true,
+                    ];
                 }
             }
 
@@ -75,7 +79,7 @@ class WalletService
                 'created_at' => now(),
             ]);
 
-            return ['wallet' => $record, 'transaction' => $transaction];
+            return ['wallet' => $record, 'transaction' => $transaction, 'idempotent' => false];
         });
 
         return [
@@ -84,6 +88,7 @@ class WalletService
             'amount' => $amount,
             'new_balance' => (float) $result['wallet']->total_balance,
             'transaction_id' => $result['transaction']->id,
+            'idempotent' => (bool) ($result['idempotent'] ?? false),
         ];
     }
 

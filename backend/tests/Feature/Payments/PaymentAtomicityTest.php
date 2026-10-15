@@ -44,7 +44,7 @@ class PaymentAtomicityTest extends TestCase
         return $memberId;
     }
 
-    public function test_fund_drive_callback_is_atomic(): void
+    public function test_legacy_stk_callback_does_not_mutate_fund_drive_payment(): void
     {
         $memberId = $this->createMember();
 
@@ -77,7 +77,7 @@ class PaymentAtomicityTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->postJson('/api/banking/coop/callback/stk', [
+        $response = $this->postJson('/api/payments/stk-callback', [
             'Body' => [
                 'stkCallback' => [
                     'MerchantRequestID' => 'atomic-merchant',
@@ -93,24 +93,21 @@ class PaymentAtomicityTest extends TestCase
             ],
         ]);
 
-        // All three must be updated atomically:
-        // 1. Payment record verified
-        $this->assertEquals('verified', DB::table('donation_payment_records')
+        $response->assertOk()->assertJsonPath('status', 'ignored');
+        $this->assertEquals('pending', DB::table('donation_payment_records')
             ->where('id', $recordId)->value('status'));
 
-        // 2. Campaign total incremented
-        $this->assertEquals(50, (float) DB::table('donation_campaigns')
+        $this->assertEquals(0, (float) DB::table('donation_campaigns')
             ->where('id', $campaignId)->value('total_collected'));
 
-        // 3. Wallet transaction created
-        $this->assertDatabaseHas('wallet_transactions', [
+        $this->assertDatabaseMissing('wallet_transactions', [
             'wallet_type' => 'donation',
             'direction' => 'credit',
             'reference_id' => $recordId,
         ]);
     }
 
-    public function test_all_three_payment_types_remain_separate(): void
+    public function test_legacy_stk_callbacks_do_not_mutate_payment_types(): void
     {
         $memberId = $this->createMember();
 
@@ -170,7 +167,7 @@ class PaymentAtomicityTest extends TestCase
         ]);
 
         // Process all three callbacks
-        $this->postJson('/api/payments/stk-callback', [
+        $contributionResponse = $this->postJson('/api/payments/stk-callback', [
             'Body' => [
                 'stkCallback' => [
                     'MerchantRequestID' => 'sep-1',
@@ -186,7 +183,7 @@ class PaymentAtomicityTest extends TestCase
             ],
         ]);
 
-        $this->postJson('/api/banking/coop/callback/stk', [
+        $penaltyResponse = $this->postJson('/api/payments/stk-callback', [
             'Body' => [
                 'stkCallback' => [
                     'MerchantRequestID' => 'sep-2',
@@ -202,7 +199,7 @@ class PaymentAtomicityTest extends TestCase
             ],
         ]);
 
-        $this->postJson('/api/banking/coop/callback/stk', [
+        $donationResponse = $this->postJson('/api/payments/stk-callback', [
             'Body' => [
                 'stkCallback' => [
                     'MerchantRequestID' => 'sep-3',
@@ -218,42 +215,24 @@ class PaymentAtomicityTest extends TestCase
             ],
         ]);
 
-        // 1. Monthly contribution is marked paid (no wallet credit)
-        $this->assertEquals('paid', DB::table('contributions')
+        $contributionResponse->assertOk()->assertJsonPath('status', 'ignored');
+        $penaltyResponse->assertOk()->assertJsonPath('status', 'ignored');
+        $donationResponse->assertOk()->assertJsonPath('status', 'ignored');
+
+        $this->assertEquals('pending', DB::table('contributions')
             ->where('id', $contributionId)->value('status'));
-
-        // 2. Penalty wallet is credited (not donation wallet)
-        $this->assertDatabaseHas('wallet_transactions', [
-            'wallet_type' => 'penalty',
-            'mpesa_receipt' => 'SEP_PENALTY',
-            'direction' => 'credit',
-        ]);
-        $this->assertDatabaseMissing('wallet_transactions', [
-            'wallet_type' => 'donation',
-            'mpesa_receipt' => 'SEP_PENALTY',
-        ]);
-
-        // 3. Donation wallet is credited and campaign total incremented
-        $this->assertDatabaseHas('wallet_transactions', [
-            'wallet_type' => 'donation',
-            'mpesa_receipt' => 'SEP_DONATION',
-            'direction' => 'credit',
-        ]);
-        $this->assertEquals(100, (float) DB::table('donation_campaigns')
+        $this->assertEquals('pending', DB::table('penalty_payment_records')
+            ->where('mpesa_transaction_id', 'ws_CO_PENALTY_001')->value('status'));
+        $this->assertEquals('pending', DB::table('donation_payment_records')
+            ->where('mpesa_transaction_id', 'ws_CO_DONATION_001')->value('status'));
+        $this->assertEquals(0, (float) DB::table('donation_campaigns')
             ->where('id', $campaignId)->value('total_collected'));
-
-        // 4. No cross-contamination: contribution has no wallet, donation doesn't pay penalties
-        $this->assertDatabaseMissing('wallet_transactions', [
-            'wallet_type' => 'donation',
-            'mpesa_receipt' => 'SEP_CONTRIB',
-        ]);
-        $this->assertDatabaseMissing('wallet_transactions', [
-            'wallet_type' => 'penalty',
-            'mpesa_receipt' => 'SEP_DONATION',
-        ]);
+        $this->assertSame(0, DB::table('wallet_transactions')
+            ->whereIn('mpesa_receipt', ['SEP_CONTRIB', 'SEP_PENALTY', 'SEP_DONATION'])
+            ->count());
     }
 
-    public function test_fund_drive_callback_atomicity_rolls_back_on_failure(): void
+    public function test_failed_legacy_stk_callback_is_ignored_until_status_poll(): void
     {
         $memberId = $this->createMember();
 
@@ -290,7 +269,7 @@ class PaymentAtomicityTest extends TestCase
             ->where('id', $campaignId)
             ->value('total_collected');
 
-        $this->postJson('/api/banking/coop/callback/stk', [
+        $response = $this->postJson('/api/payments/stk-callback', [
             'Body' => [
                 'stkCallback' => [
                     'MerchantRequestID' => 'atomic-fail-merchant',
@@ -309,8 +288,9 @@ class PaymentAtomicityTest extends TestCase
             ->where('id', $campaignId)
             ->value('total_collected');
 
-        $this->assertEquals('failed', $record->status, 'Failed callback marks payment as failed');
-        $this->assertEquals($initialCollected, $collected, 'On failure, total_collected must remain unchanged (no increment)');
+        $response->assertOk()->assertJsonPath('status', 'ignored');
+        $this->assertEquals('pending', $record->status, 'Status polling remains authoritative');
+        $this->assertEquals($initialCollected, $collected, 'An ignored callback cannot change campaign totals');
 
         $walletTxCount = DB::table('wallet_transactions')
             ->where('mpesa_receipt', 'ATOMIC_FAIL_RECPT')

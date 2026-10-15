@@ -1,20 +1,26 @@
 import { useParams, Link } from '@/lib/router-compat';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Users, TrendingUp } from 'lucide-react';
-import { mockMember } from '@/api/mock';
+import { memberApi } from '@/api/member';
 import { queryKeys } from '@/lib/query';
 import { Card, LoadingState, ErrorState, StatCard, PageHeader } from '@/components/ui';
+import { useAuth } from '@/auth/AuthContext';
 
 export default function ExecutiveDashboard() {
-  const { roleName = '' } = useParams();
+  const { roleName: routeRoleName } = useParams();
+  const { user } = useAuth();
+  const roleName = routeRoleName || user?.role || '';
+  const apiRole = roleName === 'vice-chairperson' ? 'vice_chairperson' : roleName;
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.memberExecutive(roleName),
-    queryFn: () => mockMember.getExecutiveDashboard(roleName),
+    queryFn: () => memberApi.getExecutiveDashboard(apiRole),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState message="Failed to load executive dashboard" />;
+  if (isError) return <ErrorState message="Failed to load executive dashboard" onRetry={refetch} />;
 
   return (
     <div>

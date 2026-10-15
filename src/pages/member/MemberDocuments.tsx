@@ -4,7 +4,7 @@ import {
   FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Calendar,
   HardDrive, Upload, Eye, RefreshCw, Trash2, AlertCircle, CheckCircle,
 } from 'lucide-react';
-import { mockMember } from '@/api/mock';
+import { memberApi } from '@/api/member';
 import { queryKeys } from '@/lib/query';
 import {
   Card, Badge, Button, PageHeader, Tabs, Modal, Select, Textarea, Input,
@@ -40,15 +40,15 @@ export default function MemberDocuments() {
 
   const { data: documents, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.memberDocuments,
-    queryFn: () => mockMember.getDocuments(),
+    queryFn: () => memberApi.getDocuments(),
   });
   const { data: summary } = useQuery({
     queryKey: ['member', 'document-summary'],
-    queryFn: () => mockMember.getDocumentSummary(),
+    queryFn: () => memberApi.getDocumentSummary(),
   });
 
   const uploadMut = useMutation({
-    mutationFn: (data: any) => mockMember.uploadDocument(data),
+    mutationFn: (data: Parameters<typeof memberApi.uploadDocument>[0]) => memberApi.uploadDocument(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.memberDocuments });
       qc.invalidateQueries({ queryKey: ['member', 'document-summary'] });
@@ -61,7 +61,7 @@ export default function MemberDocuments() {
   });
 
   const replaceMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => mockMember.replaceDocument(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof memberApi.replaceDocument>[1] }) => memberApi.replaceDocument(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.memberDocuments });
       qc.invalidateQueries({ queryKey: ['member', 'document-summary'] });
@@ -71,7 +71,7 @@ export default function MemberDocuments() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => mockMember.deleteDocument(id),
+    mutationFn: (id: string) => memberApi.deleteDocument(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.memberDocuments });
       qc.invalidateQueries({ queryKey: ['member', 'document-summary'] });

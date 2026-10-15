@@ -46,7 +46,7 @@
         <env name="COOP_ACCOUNT_NUMBER" value="01134568843700"/>
         <env name="COOP_USER_ID" value="KirinyagaHealthCare"/>
         <env name="COOP_OPERATOR_CODE" value="KIRINYAGA"/>
-        <env name="COOP_CALLBACK_BASE_URL" value="https://app1.kirinyagahealthcareworkerswelfare.co.ke/api/banking/coop/callback"/>
+        <env name="COOP_CALLBACK_BASE_URL" value="https://app.kirinyagahealthcareworkerswelfare.co.ke/api/banking/coop/callback"/>
         <env name="JWT_SECRET" value="test-secret-for-testing-only-12345"/>
     </php>
 </phpunit>

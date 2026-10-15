@@ -20,6 +20,7 @@ import {
   subscribeToConversations, chatSupabase,
 } from '@/api/group-chat';
 import { demoChatData, demoProfilePhotos } from '@/api/demo-chat';
+import { enableWebPushNotifications } from '@/lib/firebase-push';
 
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '😢', '🎉', '👏', '🙏', '🔥', '💯', '✅', '❌'];
 
@@ -66,12 +67,8 @@ export default function ChatPage({ preselectedConversationId, className }: ChatP
 
   const requestNotificationPermission = useCallback(async () => {
     if (!('Notification' in window)) return;
-    if (Notification.permission === 'granted') {
-      setNotificationsEnabled(true);
-    } else if (Notification.permission !== 'denied') {
-      const result = await Notification.requestPermission();
-      setNotificationsEnabled(result === 'granted');
-    }
+    const enabled = await enableWebPushNotifications();
+    setNotificationsEnabled(enabled || Notification.permission === 'granted');
   }, []);
 
   const showNotification = useCallback((title: string, body: string) => {

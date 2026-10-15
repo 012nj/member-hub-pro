@@ -428,6 +428,8 @@ export const demoRoleUsers: Record<string, AuthUser> = {
   'secretary': { ...demoUser, name: 'Lucy Wangari Kamau', email: 'secretary@khwwc.co.ke', role: 'secretary' },
   'vice-secretary': { ...demoUser, name: 'Samuel Njoroge Mbugua', email: 'vice.secretary@khwwc.co.ke', role: 'vice-secretary' as any },
   'chairperson': { ...demoUser, name: 'Dr. Robert Kibochi', email: 'chairperson@khwwc.co.ke', role: 'chairperson' },
+  'vice-chairperson': { ...demoUser, name: 'Vice Chairperson', email: 'vice.chairperson@khwwc.co.ke', role: 'vice-chairperson' },
+  'patron': { ...demoUser, name: 'KHWWC Patron', email: 'patron@khwwc.co.ke', role: 'patron' },
   'office': { ...demoUser, name: 'Mary Njeri Kungu', email: 'office@khwwc.co.ke', role: 'office' },
   'super-admin': { ...demoUser, name: 'Super Admin', email: 'superadmin@khwwc.co.ke', role: 'super-admin' },
 };

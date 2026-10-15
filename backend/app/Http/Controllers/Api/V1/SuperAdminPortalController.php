@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\HttpException;
+use App\Services\FinancialReadModel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\DB;
  */
 class SuperAdminPortalController extends PortalController
 {
+    public function __construct(private readonly FinancialReadModel $financialReadModel) {}
+
     private function guard(Request $request): array
     {
         return $this->requireAnyRole($request, ['super_admin']);
@@ -22,20 +25,54 @@ class SuperAdminPortalController extends PortalController
 
     private function onlineCount(): int
     {
-        return DB::table('user_presence')->where('is_online', 1)->where('last_seen', '>=', now()->subMinutes(5))->count();
+        $cutoff = now()->subSeconds((int) config('presence.online_threshold_seconds', 120));
+
+        return DB::table('auth_users as u')
+            ->leftJoin('user_presence as p', 'p.user_id', '=', 'u.id')
+            ->whereRaw('COALESCE(p.last_seen, u.last_seen_at) >= ?', [$cutoff])
+            ->count('u.id');
     }
 
     public function dashboard(Request $request): JsonResponse
     {
         $this->guard($request);
 
+        $contributions = $this->financialReadModel->contributionTotalsIncludingLegacy();
+
         return response()->json([
             'total_users' => DB::table('auth_users')->count(),
             'online_users' => $this->onlineCount(),
             'total_members' => DB::table('members')->count(),
+            'active_members' => DB::table('members')->where('is_active', 1)->count(),
+            'pending_members' => DB::table('members')->where('status', 'pending')->count(),
+            'total_contributions' => (int) $contributions['amount_minor'] / 100,
+            'pending_approvals' => DB::table('member_registrations')->where('status', 'pending')->count()
+                + DB::table('beneficiary_requests')->where('status', 'pending')->count(),
+            'defaulters_count' => AdminPortalController::defaultersQuery()->count(),
+            'recent_signups' => DB::table('members')
+                ->orderByDesc('created_at')
+                ->limit(6)
+                ->get(['id', 'name', 'member_id', 'created_at'])
+                ->map(fn (object $member): array => [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'member_number' => $member->member_id,
+                    'joined_date' => (string) $member->created_at,
+                ])
+                ->all(),
+            'contributions_trend' => $this->monthlyTrend(),
             'system_health' => $this->metrics(),
-            'recent_logins' => DB::table('auth_users')->whereNotNull('last_sign_in_at')->orderByDesc('last_sign_in_at')->limit(10)
-                ->get(['id', 'email', 'last_sign_in_at as date']),
+            'recent_logins' => DB::table('auth_users as u')
+                ->leftJoin('members as m', 'm.user_id', '=', 'u.id')
+                ->whereNotNull('u.last_sign_in_at')
+                ->orderByDesc('u.last_sign_in_at')
+                ->limit(10)
+                ->get([
+                    'u.id',
+                    'u.email',
+                    DB::raw('COALESCE(m.name, u.email) as user_name'),
+                    'u.last_sign_in_at as date',
+                ]),
             'pending_alerts' => DB::table('system_logs')->where('resolved', 0)->whereIn('log_level', ['error', 'critical'])->count(),
         ]);
     }
@@ -62,11 +99,11 @@ class SuperAdminPortalController extends PortalController
         }
 
         return [
-            ['name' => 'Database', 'value' => $dbMs.' ms', 'status' => $dbOk ? 'healthy' : 'critical'],
-            ['name' => 'Queue backlog', 'value' => (string) $queued, 'status' => $queued > 500 ? 'warning' : 'healthy'],
-            ['name' => 'Failed jobs', 'value' => (string) $failed, 'status' => $failed > 0 ? 'warning' : 'healthy'],
-            ['name' => 'Cache', 'value' => config('cache.default'), 'status' => 'healthy'],
-            ['name' => 'PHP', 'value' => PHP_VERSION, 'status' => 'healthy'],
+            ['label' => 'Database', 'value' => $dbMs.' ms', 'status' => $dbOk ? 'healthy' : 'critical'],
+            ['label' => 'Queue backlog', 'value' => (string) $queued, 'status' => $queued > 500 ? 'warning' : 'healthy'],
+            ['label' => 'Failed jobs', 'value' => (string) $failed, 'status' => $failed > 0 ? 'warning' : 'healthy'],
+            ['label' => 'Cache', 'value' => config('cache.default'), 'status' => 'healthy'],
+            ['label' => 'PHP', 'value' => PHP_VERSION, 'status' => 'healthy'],
         ];
     }
 

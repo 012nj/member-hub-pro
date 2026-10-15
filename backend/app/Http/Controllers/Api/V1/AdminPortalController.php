@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\HttpException;
 use App\Jobs\SendBulkSmsJob;
+use App\Services\AuthService;
+use App\Services\FinancialReadModel;
 use App\Services\PaymentLifecycleService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -18,23 +20,48 @@ use Illuminate\Support\Facades\DB;
 class AdminPortalController extends PortalController
 {
     private const ROLES = ['admin', 'treasurer', 'secretary', 'chairperson', 'office'];
+    private const READ_ROLES = ['admin', 'super_admin', 'treasurer', 'secretary', 'chairperson', 'office'];
+    private const ASSIGNABLE_MEMBER_ROLES = [
+        'treasurer', 'secretary', 'vice_secretary', 'chairperson',
+        'vice_chairperson', 'patron', 'office',
+    ];
 
-    public function __construct(private readonly PaymentLifecycleService $lifecycle) {}
+    public function __construct(
+        private readonly PaymentLifecycleService $lifecycle,
+        private readonly FinancialReadModel $financialReadModel,
+    ) {}
 
     public function dashboard(Request $request): JsonResponse
     {
         $this->requireAnyRole($request, self::ROLES);
 
-        return response()->json($this->cached('admin:dash', fn () => [
-            'total_members' => DB::table('members')->count(),
-            'active_members' => DB::table('members')->where('is_active', 1)->count(),
-            'total_contributions' => (float) DB::table('contributions')->where('status', 'paid')->sum('amount'),
-            'pending_approvals' => DB::table('member_registrations')->where('status', 'pending')->count()
-                + DB::table('beneficiary_requests')->where('status', 'pending')->count(),
-            'defaulters_count' => self::defaultersQuery()->count(),
-            'recent_signups' => DB::table('members')->orderByDesc('created_at')->limit(6)->get(),
-            'contributions_trend' => $this->monthlyTrend(),
-        ], 30));
+        return response()->json($this->cached('admin:dash', function (): array {
+            $recentSignups = DB::table('members as m')
+                ->orderByDesc('m.created_at')
+                ->limit(6)
+                ->get(['m.id', 'm.name', 'm.member_id', 'm.created_at'])
+                ->map(fn (object $member): array => [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'member_number' => $member->member_id,
+                    'joined_date' => (string) $member->created_at,
+                ])
+                ->all();
+
+            $contributions = $this->financialReadModel->contributionTotalsIncludingLegacy();
+
+            return [
+                'total_members' => DB::table('members')->count(),
+                'active_members' => DB::table('members')->where('is_active', 1)->count(),
+                'pending_members' => DB::table('members')->where('status', 'pending')->count(),
+                'total_contributions' => (int) $contributions['amount_minor'] / 100,
+                'pending_approvals' => DB::table('member_registrations')->where('status', 'pending')->count()
+                    + DB::table('beneficiary_requests')->where('status', 'pending')->count(),
+                'defaulters_count' => self::defaultersQuery()->count(),
+                'recent_signups' => $recentSignups,
+                'contributions_trend' => $this->monthlyTrend(),
+            ];
+        }, 30));
     }
 
     /** Members with unpaid months up to the current month. */
@@ -53,7 +80,7 @@ class AdminPortalController extends PortalController
 
     public function members(Request $request): JsonResponse
     {
-        $this->requireAnyRole($request, self::ROLES);
+        $this->requireAnyRole($request, self::READ_ROLES);
         $q = DB::table('members as m')->leftJoin('auth_users as u', 'u.id', '=', 'm.user_id')
             ->select('m.*', 'u.email')->orderBy('m.name');
         if ($s = trim((string) $request->query('search', ''))) {
@@ -81,7 +108,7 @@ class AdminPortalController extends PortalController
 
     public function memberDetail(Request $request, string $id): JsonResponse
     {
-        $this->requireAnyRole($request, self::ROLES);
+        $this->requireAnyRole($request, self::READ_ROLES);
         $m = DB::table('members as m')->leftJoin('auth_users as u', 'u.id', '=', 'm.user_id')->select('m.*', 'u.email')->where('m.id', $id)->first();
         if (! $m) {
             throw new HttpException(404, 'not_found', 'Member not found.');
@@ -93,23 +120,85 @@ class AdminPortalController extends PortalController
         ]);
     }
 
+    public function updateMemberRoles(Request $request, string $id): JsonResponse
+    {
+        $this->requireAnyRole($request, ['admin', 'super_admin']);
+        $data = $request->validate([
+            'roles' => ['required', 'array'],
+            'roles.*' => ['required', 'string', 'distinct', 'in:'.implode(',', self::ASSIGNABLE_MEMBER_ROLES)],
+        ]);
+        $member = DB::table('members')->where('id', $id)->first(['id', 'user_id']);
+        if (! $member || ! $member->user_id) {
+            throw new HttpException(404, 'member_not_found', 'Member account not found.');
+        }
+
+        $desiredRoles = array_values(array_unique($data['roles']));
+        DB::transaction(function () use ($member, $desiredRoles): void {
+            $existing = DB::table('user_roles')
+                ->where('user_id', $member->user_id)
+                ->whereIn('role', self::ASSIGNABLE_MEMBER_ROLES)
+                ->get(['id', 'role', 'is_active'])
+                ->keyBy('role');
+
+            foreach (self::ASSIGNABLE_MEMBER_ROLES as $role) {
+                $assignment = $existing->get($role);
+                if (in_array($role, $desiredRoles, true)) {
+                    if ($assignment) {
+                        DB::table('user_roles')->where('id', $assignment->id)->update(['is_active' => 1]);
+                    } else {
+                        DB::table('user_roles')->insert([
+                            'id' => $this->uuid(),
+                            'user_id' => $member->user_id,
+                            'role' => $role,
+                            'is_active' => 1,
+                        ]);
+                    }
+                } elseif ($assignment) {
+                    DB::table('user_roles')->where('id', $assignment->id)->update(['is_active' => 0]);
+                }
+            }
+
+            $memberRole = DB::table('user_roles')
+                ->where('user_id', $member->user_id)
+                ->where('role', 'member')
+                ->first(['id']);
+            if ($memberRole) {
+                DB::table('user_roles')->where('id', $memberRole->id)->update(['is_active' => 1]);
+            } else {
+                DB::table('user_roles')->insert([
+                    'id' => $this->uuid(),
+                    'user_id' => $member->user_id,
+                    'role' => 'member',
+                    'is_active' => 1,
+                ]);
+            }
+        });
+
+        $this->audit($request, 'member_roles_updated', ['roles' => $desiredRoles], (string) $member->id);
+
+        return response()->json([
+            'member_id' => $member->id,
+            'roles' => AuthService::rolesFor((string) $member->user_id),
+        ]);
+    }
+
     public function memberContributions(Request $request, string $id): JsonResponse
     {
-        $this->requireAnyRole($request, self::ROLES);
+        $this->requireAnyRole($request, self::READ_ROLES);
 
         return response()->json(DB::table('contributions')->where('member_id', $id)->orderByDesc('year')->orderByDesc('month')->get());
     }
 
     public function memberBeneficiaries(Request $request, string $id): JsonResponse
     {
-        $this->requireAnyRole($request, self::ROLES);
+        $this->requireAnyRole($request, self::READ_ROLES);
 
         return response()->json(DB::table('beneficiaries')->where('member_id', $id)->get());
     }
 
     public function contributions(Request $request): JsonResponse
     {
-        $this->requireAnyRole($request, self::ROLES);
+        $this->requireAnyRole($request, self::READ_ROLES);
         $q = DB::table('contributions as c')->leftJoin('members as m', 'm.id', '=', 'c.member_id')
             ->select('c.*', 'm.name as member_name', 'm.member_id as member_number')->orderByDesc('c.year')->orderByDesc('c.month');
         if ($s = $request->query('status')) {

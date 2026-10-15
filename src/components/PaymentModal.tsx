@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CreditCard, Smartphone, Landmark, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { ApiError } from '@/api/client';
 import { mockMember } from '@/api/mock';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { formatCurrency } from '@/lib/format';
 
 type PayMethod = 'mpesa' | 'bank';
-type PaymentState = 'form' | 'sending' | 'pending' | 'success' | 'failed';
+type PaymentState = 'form' | 'sending' | 'pending' | 'success' | 'failed' | 'unconfirmed' | 'noted';
 
 interface PaymentModalProps {
   open: boolean;
@@ -24,7 +25,7 @@ interface PaymentModalProps {
 
 const POLL_INTERVAL = 10_000;
 const MAX_ATTEMPTS = 60;
-const SUCCESS_STATUSES = ['confirmed', 'paid', 'verified', 'partial'];
+const SUCCESS_STATUSES = ['confirmed', 'paid', 'verified', 'reconciled'];
 const FAILURE_STATUSES = ['failed', 'cancelled', 'reversed'];
 
 export function PaymentModal({
@@ -38,6 +39,7 @@ export function PaymentModal({
   const [errorMsg, setErrorMsg] = useState('');
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptsRef = useRef(0);
+  const checkoutIdRef = useRef('');
 
   useEffect(() => {
     if (open) {
@@ -46,6 +48,7 @@ export function PaymentModal({
       setState('form');
       setErrorMsg('');
       attemptsRef.current = 0;
+      checkoutIdRef.current = '';
     }
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
   }, [open, initialPhone]);
@@ -58,15 +61,15 @@ export function PaymentModal({
   const pollStatus = useCallback((checkoutId: string) => {
     if (pollRef.current) clearTimeout(pollRef.current);
     if (attemptsRef.current >= MAX_ATTEMPTS) {
-      setState('failed');
-      setErrorMsg('Payment confirmation timed out. Please check your M-Pesa messages and try again if needed.');
+      setState('unconfirmed');
+      setErrorMsg('We could not confirm the payment yet. Check your M-Pesa messages before retrying to avoid paying twice.');
       return;
     }
     attemptsRef.current += 1;
     pollRef.current = setTimeout(async () => {
       try {
         const res = await mockMember.paymentStatus(checkoutId);
-        const status = (res as any)?.status?.toLowerCase();
+        const status = typeof res.status === 'string' ? res.status.toLowerCase() : 'unknown';
         if (SUCCESS_STATUSES.includes(status)) {
           handleSuccess();
           return;
@@ -76,8 +79,18 @@ export function PaymentModal({
           setErrorMsg('Payment was not completed. Please try again.');
           return;
         }
+        if (res.final === true) {
+          setState('unconfirmed');
+          setErrorMsg(res.message || 'We could not confirm the payment. Check your M-Pesa messages before retrying.');
+          return;
+        }
         pollStatus(checkoutId);
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+          setState('failed');
+          setErrorMsg(error.message);
+          return;
+        }
         pollStatus(checkoutId);
       }
     }, POLL_INTERVAL);
@@ -86,8 +99,7 @@ export function PaymentModal({
   const submitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (method === 'bank') {
-      setState('success');
-      onSuccess?.();
+      setState('noted');
       return;
     }
     if (!phone) { setErrorMsg('M-Pesa phone number is required.'); return; }
@@ -100,21 +112,27 @@ export function PaymentModal({
         member_id: memberId, paymentType, transactionDesc,
         campaignId, penaltyIds,
       });
-      const checkoutId = (res as any)?.checkoutRequestId || (res as any)?.checkout_request_id;
-      if (!checkoutId) {
+      if (!res.success) {
         setState('failed');
-        setErrorMsg('Could not initiate payment. Please try again.');
+        setErrorMsg(res.message || 'Could not initiate payment. Please try again.');
         return;
       }
+      const checkoutId = res.checkoutRequestId;
+      if (!checkoutId) {
+        setState('failed');
+        setErrorMsg('The payment provider did not return a checkout reference. Check your payment status before retrying.');
+        return;
+      }
+      checkoutIdRef.current = checkoutId;
       setState('pending');
       pollStatus(checkoutId);
-    } catch {
+    } catch (error) {
       setState('failed');
-      setErrorMsg('Failed to send STK push. Please try again.');
+      setErrorMsg(error instanceof Error ? error.message : 'Failed to send STK push. Please try again.');
     }
   };
 
-  const canClose = state === 'form' || state === 'success' || state === 'failed';
+  const canClose = state === 'form' || state === 'success' || state === 'failed' || state === 'unconfirmed' || state === 'noted';
 
   return (
     <Modal open={open} onClose={() => canClose && onClose()} title="M-Pesa Payment" size="sm">
@@ -201,6 +219,37 @@ export function PaymentModal({
               : `Please complete the bank transfer using the reference above. Your payment will be verified by the treasurer.`}
           </p>
           <Button variant="primary" onClick={onClose} className="mt-2">Close</Button>
+        </div>
+      )}
+
+      {state === 'noted' && (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <div className="w-14 h-14 rounded-full bg-warning-50 flex items-center justify-center">
+            <Landmark size={26} className="text-warning-600" />
+          </div>
+          <p className="text-sm font-medium text-neutral-700">Bank transfer not yet verified</p>
+          <p className="text-xs text-neutral-400 text-center max-w-xs">
+            Complete the transfer using the displayed details. It will appear as paid after the treasurer verifies it.
+          </p>
+          <Button variant="primary" onClick={onClose} className="mt-2">Close</Button>
+        </div>
+      )}
+
+      {state === 'unconfirmed' && (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <div className="w-14 h-14 rounded-full bg-warning-50 flex items-center justify-center">
+            <AlertCircle size={26} className="text-warning-600" />
+          </div>
+          <p className="text-sm font-medium text-neutral-700">Payment status not confirmed</p>
+          <p className="text-xs text-neutral-400 text-center max-w-xs">{errorMsg}</p>
+          <div className="flex gap-3 mt-2">
+            <Button variant="secondary" onClick={onClose}>Close</Button>
+            <Button variant="primary" onClick={() => {
+              attemptsRef.current = 0;
+              setState('pending');
+              if (checkoutIdRef.current) pollStatus(checkoutIdRef.current);
+            }}>Check again</Button>
+          </div>
         </div>
       )}
 

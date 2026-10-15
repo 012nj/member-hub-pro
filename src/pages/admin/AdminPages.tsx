@@ -1,7 +1,13 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GenericListPage, ImportPage, GenericFormPage, GenericDashboardPage } from '@/components/GenericPages';
 import { mockAdmin, mockTreasurer } from '@/api/mock';
+import { adminApi } from '@/api/admin';
 import { queryKeys } from '@/lib/query';
-import { Badge } from '@/components/ui';
+import {
+  Badge, Button, Card, DataTable, EmptyState, ErrorState, Input,
+  LoadingState, PageHeader, Pagination, Select, Textarea,
+} from '@/components/ui';
 import { formatCurrency, formatDate } from '@/lib/format';
 import {
   Coins, Upload, UserPlus, Users, CreditCard, AlertTriangle,
@@ -109,18 +115,79 @@ export function AdminEvents() {
 }
 
 export function AdminDocuments() {
-  return <GenericListPage config={{
-    title: 'Documents', subtitle: 'Review and manage documents', icon: FileText,
-    fetchFn: () => mockAdmin.getDocuments().then(d => ({ data: d, current_page: 1, last_page: 1, total: d.length })),
-    queryKey: () => queryKeys.adminDocuments,
-    columns: [
-      { key: 'title', label: 'Title', render: r => <span className="font-medium">{r.title}</span> },
-      { key: 'type', label: 'Type' },
-      { key: 'size', label: 'Size' },
-      { key: 'date', label: 'Date', render: r => formatDate(r.date) },
-      { key: 'status', label: 'Status', render: r => <Badge status={r.status}>{r.status}</Badge> },
-    ],
-  }} />;
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const queryKey = [...queryKeys.adminDocuments, page, status, search];
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey,
+    queryFn: () => adminApi.getDocuments({ page, status, q: search }),
+  });
+  const review = useMutation({
+    mutationFn: ({ id, decision, notes }: { id: string; decision: 'approve' | 'reject'; notes?: string }) =>
+      decision === 'approve' ? adminApi.approveDocument(id, notes) : adminApi.rejectDocument(id, notes ?? ''),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.adminDocuments }),
+  });
+
+  return (
+    <div>
+      <PageHeader title="Documents" subtitle="Review and manage member documents" icon={<FileText size={20} />} />
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <Input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search member or file name..." />
+          <Select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="sm:w-48">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </Select>
+        </div>
+        {review.isError && <p role="alert" className="mb-3 text-sm text-error-600">Could not review the document. {review.error instanceof Error ? review.error.message : 'Please retry.'}</p>}
+        {isLoading && <LoadingState />}
+        {isError && <ErrorState message="Could not load documents." onRetry={() => refetch()} />}
+        {!isLoading && !isError && data?.data.length === 0 && <EmptyState icon={<FileText size={22} />} title="No documents found" />}
+        {!isLoading && !isError && data && data.data.length > 0 && (
+          <>
+            <DataTable
+              data={data.data}
+              columns={[
+                { key: 'member_name', label: 'Member', render: row => <div><p className="font-medium">{row.member_name ?? row.uploaded_by}</p><p className="text-xs text-neutral-400">{row.member_phone}</p></div> },
+                { key: 'title', label: 'Document', render: row => <span className="font-medium">{row.title}</span> },
+                { key: 'type', label: 'Type' },
+                { key: 'size', label: 'Size' },
+                { key: 'date', label: 'Uploaded', render: row => formatDate(row.date) },
+                { key: 'status', label: 'Status', render: row => <Badge status={row.status}>{row.status}</Badge> },
+                { key: 'actions', label: 'Review', render: row => row.status === 'pending' ? (
+                  <div className="flex gap-1">
+                    <Button size="sm" disabled={review.isPending} onClick={() => review.mutate({ id: row.id, decision: 'approve' })}>Approve</Button>
+                    <Button size="sm" variant="ghost" disabled={review.isPending} onClick={() => { setRejectingId(row.id); setRejectNotes(''); }}>Reject</Button>
+                  </div>
+                ) : null },
+              ]}
+            />
+            <Pagination currentPage={data.current_page} lastPage={data.last_page} onPage={setPage} />
+          </>
+        )}
+      </Card>
+      <Modal open={!!rejectingId} onClose={() => setRejectingId(null)} title="Reject document">
+        <div className="space-y-4">
+          <Textarea label="Reason for rejection" value={rejectNotes} onChange={event => setRejectNotes(event.target.value)} required />
+          <Button
+            disabled={!rejectNotes.trim() || review.isPending}
+            onClick={() => rejectingId && review.mutate(
+              { id: rejectingId, decision: 'reject', notes: rejectNotes.trim() },
+              { onSuccess: () => setRejectingId(null) },
+            )}
+          >
+            {review.isPending ? 'Submitting…' : 'Confirm rejection'}
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
 }
 
 export function AdminNews() {
@@ -136,16 +203,52 @@ export function AdminNews() {
 }
 
 export function AdminBeneficiaryRequests() {
-  return <GenericListPage config={{
-    title: 'Beneficiary Requests', subtitle: 'Review member beneficiary requests', icon: UserCheck,
-    fetchFn: () => mockAdmin.getBeneficiaries(1).then(d => d),
-    queryKey: () => ['admin', 'beneficiary-requests'],
-    columns: [
-      { key: 'name', label: 'Beneficiary' },
-      { key: 'relationship', label: 'Relationship' },
-      { key: 'percentage', label: 'Percentage', render: r => <Badge>{r.percentage}%</Badge> },
-    ],
-  }} />;
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<'pending' | 'reviewed'>('pending');
+  const queryKey = ['admin', 'beneficiary-requests', status] as const;
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey,
+    queryFn: () => adminApi.getBeneficiaryRequests(status),
+  });
+  const review = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: 'approved' | 'rejected' }) =>
+      adminApi.reviewBeneficiaryRequest(id, decision),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'beneficiary-requests'] }),
+  });
+
+  return (
+    <div>
+      <PageHeader title="Beneficiary Requests" subtitle="Review member beneficiary requests" icon={<UserCheck size={20} />} />
+      <Card className="p-4">
+        <Select value={status} onChange={event => setStatus(event.target.value as 'pending' | 'reviewed')} className="mb-4 sm:w-48">
+          <option value="pending">Pending</option>
+          <option value="reviewed">Reviewed</option>
+        </Select>
+        {review.isError && <p role="alert" className="mb-3 text-sm text-error-600">Could not update this request. {review.error instanceof Error ? review.error.message : 'Please retry.'}</p>}
+        {isLoading && <LoadingState />}
+        {isError && <ErrorState message="Could not load beneficiary requests." onRetry={() => refetch()} />}
+        {!isLoading && !isError && data?.length === 0 && <EmptyState icon={<UserCheck size={22} />} title="No requests found" />}
+        {!isLoading && !isError && data && data.length > 0 && (
+          <DataTable
+            data={data}
+            columns={[
+              { key: 'member', label: 'Member', render: row => <div><p className="font-medium">{row.member.name}</p><p className="text-xs text-neutral-400">{row.member.member_id} · {row.member.phone}</p></div> },
+              { key: 'request_type', label: 'Request', render: row => <span className="capitalize">{row.request_type}</span> },
+              { key: 'beneficiary_name', label: 'Beneficiary', render: row => row.beneficiary_name ?? row.beneficiary_id ?? '—' },
+              { key: 'created_at', label: 'Submitted', render: row => formatDate(row.created_at) },
+              { key: 'status', label: 'Status', render: row => <Badge status={row.status}>{row.status}</Badge> },
+              { key: 'actions', label: 'Review', render: row => row.status === 'pending' ? (
+                <div className="flex gap-1">
+                  <Button size="sm" disabled={review.isPending} onClick={() => review.mutate({ id: row.id, decision: 'approved' })}>Approve</Button>
+                  <Button size="sm" variant="ghost" disabled={review.isPending} onClick={() => review.mutate({ id: row.id, decision: 'rejected' })}>Reject</Button>
+                </div>
+              ) : row.admin_notes || '—' },
+            ]}
+          />
+        )}
+      </Card>
+    </div>
+  );
 }
 
 export { AdminDefaulters } from './AdminDefaulters';
@@ -245,7 +348,7 @@ export function AdminDonations() {
 export function AdminDonationCampaigns() {
   return <GenericListPage config={{
     title: 'Donation Campaigns', subtitle: 'Manage fundraising campaigns', icon: Megaphone,
-    fetchFn: () => mockAdmin.getDonationCampaigns().then(d => ({ data: d, current_page: 1, last_page: 1, total: d.length })),
+    fetchFn: () => adminApi.getDonationCampaigns().then(d => ({ data: d, current_page: 1, last_page: 1, total: d.length })),
     queryKey: () => queryKeys.adminCampaigns,
     columns: [
       { key: 'title', label: 'Campaign', render: r => <span className="font-medium">{r.title}</span> },

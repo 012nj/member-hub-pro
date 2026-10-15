@@ -33,6 +33,10 @@ class PaymentLifecycleService
             default => throw new \InvalidArgumentException("Unknown payment type: {$paymentType}"),
         };
 
+        if (($result['success'] ?? false) && ! ($result['idempotent'] ?? false)) {
+            \App\Observers\FinancialChangeObserver::bump();
+        }
+
         if (in_array($paymentType, ['donation', 'fund_drive'], true)
             && ($result['success'] ?? false) && ! ($result['idempotent'] ?? false)) {
             $this->sendDonationReceipt($memberId, $amount, $providerReference, $relatedEntityId);
@@ -96,6 +100,10 @@ class PaymentLifecycleService
         }
 
         // Compatibility adapter: legacy callers enter the canonical manual-payment workflow.
+        $alreadyProcessed = DB::table('payment_provider_events')
+            ->where('provider_name', 'manual')
+            ->where('provider_event_id', $providerReference)
+            ->exists();
         $result = $this->paymentEngine->processProviderEvent([
             'provider' => 'manual',
             'provider_event_id' => $providerReference,
@@ -128,6 +136,7 @@ class PaymentLifecycleService
             'next_due_date' => null,
             'provider_reference' => $providerReference,
             'source' => $source,
+            'idempotent' => $alreadyProcessed,
         ];
     }
 
@@ -556,6 +565,7 @@ class PaymentLifecycleService
                 'amount' => $amount,
                 'provider_reference' => $providerReference,
                 'wallet' => $result,
+                'idempotent' => (bool) ($result['idempotent'] ?? false),
             ];
         });
     }

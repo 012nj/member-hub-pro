@@ -5,6 +5,8 @@ export type UserRole =
   | 'secretary'
   | 'vice-secretary'
   | 'chairperson'
+  | 'vice-chairperson'
+  | 'patron'
   | 'office'
   | 'super-admin';
 
@@ -13,6 +15,7 @@ export interface AuthUser {
   name: string;
   email: string;
   role: UserRole;
+  roles?: UserRole[];
   avatar?: string;
   member_id?: string;
   phone?: string;
@@ -20,7 +23,7 @@ export interface AuthUser {
 }
 
 export interface LoginCredentials {
-  email: string;
+  phone: string;
   password: string;
 }
 
@@ -57,6 +60,8 @@ export interface Member {
   phone: string;
   member_number: string;
   role: UserRole;
+  roles?: UserRole[];
+  user_id?: string | null;
   status: 'active' | 'inactive' | 'suspended';
   joined_date: string;
   contributions_total: number;
@@ -65,6 +70,24 @@ export interface Member {
   avatar?: string;
   county: string;
   workplace: string;
+}
+
+export interface BeneficiaryRequest {
+  id: string;
+  request_type: 'add' | 'remove';
+  beneficiary_id?: string | null;
+  beneficiary_name?: string | null;
+  beneficiary_relationship?: string | null;
+  beneficiary_phone?: string | null;
+  beneficiary_id_number?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_notes?: string | null;
+  created_at: string;
+  member: {
+    name: string;
+    phone: string;
+    member_id: string;
+  };
 }
 
 export interface Beneficiary {
@@ -116,6 +139,8 @@ export interface Document {
   uploaded_by: string;
   date: string;
   url?: string;
+  member_name?: string;
+  member_phone?: string;
 }
 
 export interface NewsArticle {
@@ -151,10 +176,30 @@ export interface LeadershipPerson {
   title: string;
   position: string;
   bio: string;
+  member_id?: string;
+  display_name?: string | null;
+  title_prefix?: string | null;
+  public_role?: string;
+  short_bio?: string | null;
+  biography?: string | null;
+  qualifications?: string | null;
+  published?: boolean;
+  is_featured?: boolean;
+  sort_order?: number;
   photo?: string;
   email?: string;
   phone?: string;
   order: number;
+}
+
+export interface LeadershipMember {
+  member_id: string;
+  name: string;
+  member_number: string;
+  image_url?: string | null;
+  roles: string[];
+  suggested_public_role: string;
+  profile?: LeadershipPerson | null;
 }
 
 export interface WithdrawalRequest {
@@ -356,8 +401,9 @@ export interface EmailTemplate {
   name: string;
   subject: string;
   body: string;
-  variables: string[];
+  variables?: string[];
   last_modified: string;
+  enabled?: boolean;
 }
 
 export interface MediaAsset {

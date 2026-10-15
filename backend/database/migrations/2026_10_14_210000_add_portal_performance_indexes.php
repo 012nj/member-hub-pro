@@ -35,6 +35,32 @@ return new class extends Migration
         return collect(DB::select('SHOW INDEX FROM `'.$table.'`'))->contains(fn ($r) => $r->Key_name === $name);
     }
 
+    private function addIndex(string $table, array $cols, string $name): void
+    {
+        $indexedColumns = [];
+        $requiresPrefix = false;
+
+        foreach ($cols as $column) {
+            $indexedColumn = '`'.$column.'`';
+            $type = strtolower(Schema::getColumnType($table, $column));
+
+            if (in_array($type, ['text', 'mediumtext', 'longtext', 'blob', 'mediumblob', 'longblob'], true)) {
+                $indexedColumn .= '(32)';
+                $requiresPrefix = true;
+            }
+
+            $indexedColumns[] = $indexedColumn;
+        }
+
+        if ($requiresPrefix) {
+            DB::statement('ALTER TABLE `'.$table.'` ADD INDEX `'.$name.'` ('.implode(', ', $indexedColumns).')');
+
+            return;
+        }
+
+        Schema::table($table, fn ($t) => $t->index($cols, $name));
+    }
+
     public function up(): void
     {
         foreach ($this->indexes as $table => $sets) {
@@ -43,7 +69,7 @@ return new class extends Migration
                 if (! Schema::hasColumns($table, $cols)) continue;
                 $name = $this->name($table, $cols);
                 if ($this->exists($table, $name)) continue;
-                Schema::table($table, fn ($t) => $t->index($cols, $name));
+                $this->addIndex($table, $cols, $name);
             }
         }
     }

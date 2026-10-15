@@ -9,6 +9,7 @@ import type {
   SystemMetric,
   Member,
   Paginated,
+  UserRole,
 } from '@/types';
 
 export const secretaryApi = {
@@ -103,12 +104,22 @@ export const superAdminApi = {
     total_users: number;
     online_users: number;
     total_members: number;
-    system_health: SystemMetric[];
-    recent_logins: LoginActivity[];
+    active_members: number;
+    pending_members: number;
+    total_contributions: number;
+    pending_approvals: number;
+    defaulters_count: number;
+    recent_signups: { id: string; name: string; member_number: string | null; joined_date: string }[];
+    contributions_trend: { month: string; amount: number }[];
+    system_health: { label: string; value: string; status: SystemMetric['status'] }[];
+    recent_logins: { id: string; user_name: string; email: string; date: string }[];
     pending_alerts: number;
   }>('/super-admin/dashboard'),
 
   getMemberDetail: (id: string) => api.get<Member>(`/super-admin/members/${id}`),
+
+  updateMemberRoles: (id: string, roles: UserRole[]) =>
+    api.put<{ member_id: string; roles: UserRole[] }>(`/super-admin/members/${id}/roles`, { roles }),
 
   getTroubleshooting: () => api.get<{
     issues: { id: string; severity: string; module: string; description: string; date: string }[];

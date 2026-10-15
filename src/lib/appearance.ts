@@ -1,5 +1,4 @@
 export const BACKGROUND_INTERVAL_MS = 30_000;
-export const MORNING_DURATION_MS = 5_000;
 export const MORNING_STORAGE_KEY = 'khwwc.morning.last-day';
 export const APPEARANCE_STORAGE_KEY = 'khwwc.appearance.theme';
 

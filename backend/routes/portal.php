@@ -85,6 +85,7 @@ Route::middleware(['auth.jwt', 'throttle:api'])->group(function () {
         Route::prefix($p)->group(function () {
             Route::get('members', [A::class, 'members']);
             Route::get('members/{id}', [A::class, 'memberDetail']);
+            Route::put('members/{id}/roles', [A::class, 'updateMemberRoles']);
             Route::get('members/{id}/contributions', [A::class, 'memberContributions']);
             Route::get('members/{id}/beneficiaries', [A::class, 'memberBeneficiaries']);
             Route::get('contributions', [A::class, 'contributions']);

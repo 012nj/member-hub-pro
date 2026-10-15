@@ -13,6 +13,30 @@ import type {
   Donation,
   DonationCampaign,
 } from '@/types';
+import { mapDocument, mapDocumentSummary, type BackendDocument } from './documents';
+
+export interface StkPushRequest {
+  phone: string;
+  amount: number;
+  account_ref: string;
+  member_id?: string;
+  paymentType: 'penalty' | 'donation' | 'monthly_contribution' | 'operational';
+  transactionDesc?: string;
+  penaltyIds?: string[];
+  campaignId?: string;
+}
+
+export interface StkPushResponse {
+  success: boolean;
+  checkoutRequestId?: string;
+  message: string;
+}
+
+export interface PaymentStatusResponse {
+  status: string;
+  message?: string;
+  final?: boolean;
+}
 
 export const memberApi = {
   dashboard: () => api.get<{
@@ -20,7 +44,6 @@ export const memberApi = {
     contributions_count: number;
     penalties_total: number;
     donations_total: number;
-    wallet_balance: number;
     upcoming_events: EventItem[];
     recent_contributions: Contribution[];
     unread_notifications: number;
@@ -49,11 +72,21 @@ export const memberApi = {
   markNotificationRead: (id: string) =>
     api.patch<void>(`/member/notifications/${id}/read`),
 
-  getDocuments: () => api.get<Document[]>('/member/documents'),
+  getDocuments: () =>
+    api.get<{ data: BackendDocument[] }>('/documents/me')
+      .then(({ data }) => data.map(mapDocument)),
 
-  getDocumentSummary: () => api.get<{ total: number; uploaded: number; pending: number; approved: number; rejected: number; expired: number; completion_pct: number }>('/documents/me/summary'),
+  getDocumentSummary: () =>
+    api.get<{ data: Record<string, unknown> }>('/documents/me/summary')
+      .then(({ data }) => mapDocumentSummary(data)),
 
-  getDocumentTypes: () => api.get<{ code: string; name: string; allowed_member_upload: boolean }[]>('/documents/types'),
+  getDocumentTypes: () =>
+    api.get<{ data: { code: string; label: string }[] }>('/documents/types')
+      .then(({ data }) => data.map(type => ({
+        code: type.code,
+        name: type.label,
+        allowed_member_upload: type.code === 'national_id' || type.code === 'passport',
+      }))),
 
   getEvents: () => api.get<EventItem[]>('/member/events'),
 
@@ -89,8 +122,8 @@ export const memberApi = {
 
   deleteDocument: (id: string) => api.delete<void>(`/documents/${id}?hard_delete=0`),
 
-  changePassword: (data: { new_password: string }) =>
-    api.post<{ message: string }>('/auth/v1/password', data),
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    api.post<{ success: boolean }>('/auth/change-password', data),
 
   uploadProfilePhoto: (data: { file: File; userId: string }) => {
     const ext = data.file.name.split('.').pop() || 'png';
@@ -110,18 +143,18 @@ export const memberApi = {
     const search = params
       ? '?' + Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v || '')}`).join('&')
       : '';
-    return api.download(`/member/downloads/statement${search}`, 'statement.pdf');
+    return api.download(`/member/downloads/statement${search}`, 'statement.csv');
   },
 
   downloadReceipt: (id: string) =>
-    api.download(`/member/downloads/receipt/${id}`, `receipt-${id}.pdf`),
+    api.download(`/member/downloads/receipt/${id}`, `receipt-${id}.csv`),
 
   getExecutiveDashboard: (roleName: string) =>
     api.get<{ role: string; title: string; stats: { label: string; value: string }[]; actions: { label: string; route: string }[] }>(`/member/executive/${roleName}`),
 
-  stkPush: (data: { phone: string; amount: number; account_ref: string; member_id?: string; paymentType: string; transactionDesc?: string; penaltyIds?: string[]; campaignId?: string }) =>
-    api.post<{ checkoutRequestId: string; message: string }>('/payments/stk-push', data),
+  stkPush: (data: StkPushRequest) =>
+    api.post<StkPushResponse>('/payments/stk-push', data),
 
   paymentStatus: (checkoutRequestId: string) =>
-    api.get<{ status: string; message?: string }>(`/payments/status/${checkoutRequestId}`),
+    api.get<PaymentStatusResponse>(`/payments/status/${checkoutRequestId}`),
 };

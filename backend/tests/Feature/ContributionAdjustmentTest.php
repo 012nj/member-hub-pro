@@ -9,6 +9,7 @@ use App\Services\ContributionAdjustmentService;
 use App\Services\FinancialReadModel;
 use App\Support\Uuid;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -73,5 +74,21 @@ class ContributionAdjustmentTest extends TestCase
         $overview = app(FinancialReadModel::class)->memberOverview($memberId);
         $this->assertSame(20000, $overview['cash_received_minor']);
         $this->assertSame(2, DB::table('contribution_adjustments')->where('member_id', $memberId)->count());
+    }
+
+    public function test_adjustment_bumps_versioned_dashboard_cache(): void
+    {
+        [$memberId, $userId] = $this->createMember();
+        Cache::put('khwwc:data_version', 25);
+
+        app(ContributionAdjustmentService::class)->create(
+            $memberId,
+            25000,
+            'contribution',
+            'Corrected contribution',
+            $userId,
+        );
+
+        $this->assertSame(26, (int) Cache::get('khwwc:data_version'));
     }
 }

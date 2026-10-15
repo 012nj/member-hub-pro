@@ -15,7 +15,7 @@ class AuthService
 {
     public const STAFF_SET = [
         'admin', 'super_admin', 'treasurer', 'chairperson',
-        'vice_chairperson', 'secretary', 'vice_secretary', 'patron',
+        'vice_chairperson', 'secretary', 'vice_secretary', 'patron', 'office',
     ];
 
     /**
@@ -45,11 +45,7 @@ class AuthService
         return ltrim(self::normalizePhone($phone), '+').'@welfare.local';
     }
 
-    /**
-     * Resolve the role set for a user, applying the implicit hierarchy:
-     *  - super_admin implies admin
-     *  - no roles => ['member']
-     */
+    /** Resolve active assigned roles and preserve the member portal for linked members. */
     public static function rolesFor(string $userId): array
     {
         $rows = DB::table('user_roles')
@@ -60,15 +56,16 @@ class AuthService
 
         $roles = array_values(array_unique($rows));
 
-        if ($roles === []) {
-            return ['member'];
+        if (DB::table('members')->where('user_id', $userId)->exists() && ! in_array('member', $roles, true)) {
+            $roles[] = 'member';
         }
 
-        if (in_array('super_admin', $roles, true) && ! in_array('admin', $roles, true)) {
-            $roles[] = 'admin';
-        }
+        return $roles !== [] ? $roles : ['member'];
+    }
 
-        return $roles;
+    public static function requiresDashboardPin(array $roles): bool
+    {
+        return array_intersect(self::STAFF_SET, $roles) !== [];
     }
 
     public static function isSuperAdmin(array $roles): bool
@@ -78,12 +75,12 @@ class AuthService
 
     public static function canAccessSuperAdmin(array $roles): bool
     {
-        return self::isAdmin($roles);
+        return in_array('super_admin', $roles, true);
     }
 
     public static function isAdmin(array $roles): bool
     {
-        return in_array('admin', $roles, true) || in_array('super_admin', $roles, true);
+        return in_array('admin', $roles, true);
     }
 
     public static function isStaff(array $roles): bool
@@ -185,9 +182,11 @@ class AuthService
         $roles = $roles !== [] ? $roles : self::rolesFor($userId);
         $primaryRole = self::primaryRole($roles);
         $mustChangePassword = ! empty($user['must_change_password']);
-
         $accessToken = JwtService::encode(
-            JwtService::buildPayload($userId, $email, $roles, null, $mustChangePassword)
+            array_merge(
+                JwtService::buildPayload($userId, $email, $roles, null, $mustChangePassword),
+                ['pin_verified' => false]
+            )
         );
 
         $refreshToken = bin2hex(random_bytes(32));
@@ -261,15 +260,16 @@ class AuthService
 
         $userId = $payload['sub'] ?? null;
         $email = $payload['email'] ?? null;
-        $roles = $payload['roles'] ?? null;
+        $tokenRoles = $payload['roles'] ?? null;
 
         if (! $userId || ! $email) {
             throw new RuntimeException('Malformed token payload.');
         }
 
-        if ($roles === null) {
-            $roles = self::rolesFor($userId);
-        }
+        $hasRoleAssignments = DB::table('user_roles')->where('user_id', $userId)->exists();
+        $roles = $hasRoleAssignments || $tokenRoles === null
+            ? self::rolesFor($userId)
+            : array_values(array_unique(array_map('strval', $tokenRoles)));
 
         $memberId = null;
 
@@ -287,6 +287,7 @@ class AuthService
             'email' => $email,
             'roles' => $roles,
             'member_id' => $memberId,
+            'pin_verified' => (bool) ($payload['pin_verified'] ?? false),
         ];
     }
 

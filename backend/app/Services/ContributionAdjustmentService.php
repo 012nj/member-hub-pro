@@ -60,6 +60,7 @@ class ContributionAdjustmentService
         });
 
         $this->projection->syncMember($memberId);
+        \App\Observers\FinancialChangeObserver::bump();
 
         return [
             'adjustment' => (array) $adjustment,
